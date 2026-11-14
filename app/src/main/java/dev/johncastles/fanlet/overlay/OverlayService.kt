@@ -1,12 +1,20 @@
 package dev.johncastles.fanlet.overlay
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Point
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.IBinder
@@ -17,32 +25,53 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import dev.johncastles.fanlet.MainActivity
 import dev.johncastles.fanlet.R
+import dev.johncastles.fanlet.config.FanletConfig
+import dev.johncastles.fanlet.configRepository
+import dev.johncastles.fanlet.geometry.BarGeometry
+import dev.johncastles.fanlet.geometry.PixelInsets
+import dev.johncastles.fanlet.geometry.PixelRect
+import dev.johncastles.fanlet.geometry.ScreenInfo
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * Foreground service that owns the overlay windows (the edge bars).
  *
  * Start it with [android.content.Context.startForegroundService]; stop it with
  * [android.content.Context.stopService] or the "Stop" action in its notification.
- * It only runs while the user has switched it on.
+ * It only runs while the user has switched it on. While running it follows the
+ * config: every change, and every rotation, lays the bars out again.
  */
 class OverlayService : Service() {
+
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** Context used for overlay windows; see [createOverlayContext]. */
     private lateinit var overlayContext: Context
     private lateinit var windowManager: WindowManager
     private lateinit var vibrator: Vibrator
 
-    private var barView: EdgeBarView? = null
+    /** Bar windows on screen, keyed by "<bar id>/<piece index>". */
+    private val barViews = mutableMapOf<String, EdgeBarView>()
+
+    private var config: FanletConfig = FanletConfig.DEFAULT
+    private var started = false
+    private var paused = false
+    private var windowConfigCallbacks: ComponentCallbacks? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -51,105 +80,227 @@ class OverlayService : Service() {
         overlayContext = createOverlayContext()
         windowManager = overlayContext.getSystemService(WindowManager::class.java)
         vibrator = defaultVibrator()
+        registerWindowConfigCallbacks()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> stopSelf()
+            ACTION_PAUSE -> setPaused(true)
+            ACTION_RESUME -> setPaused(false)
+            else -> start()
         }
-
-        // Must happen within a few seconds of startForegroundService(), even if we
-        // then stop again because the overlay permission is missing.
-        startInForeground()
-
-        if (!Settings.canDrawOverlays(this) || !showBar()) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        runningState.value = true
         // Not sticky: restarting after a crash or reboot is handled in a later version.
         return START_NOT_STICKY
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (started) layoutBars()
+    }
+
     override fun onDestroy() {
-        removeBar()
+        mainScope.cancel()
+        windowConfigCallbacks?.let { overlayContext.unregisterComponentCallbacks(it) }
+        removeAllBars()
         runningState.value = false
+        pausedState.value = false
         super.onDestroy()
     }
 
-    // ---- Overlay window ---------------------------------------------------------
+    private fun start() {
+        // Must happen within a few seconds of startForegroundService(), even if we
+        // then stop again because the overlay permission is missing.
+        startInForeground()
+
+        if (!Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return
+        }
+        if (started) return
+        started = true
+        runningState.value = true
+
+        mainScope.launch {
+            configRepository.config.collect { latest ->
+                config = latest
+                layoutBars()
+            }
+        }
+    }
+
+    private fun setPaused(value: Boolean) {
+        if (!started) {
+            // Only reachable if the service was not running; nothing to pause.
+            stopSelf()
+            return
+        }
+        paused = value
+        pausedState.value = value
+        layoutBars()
+        updateNotification()
+    }
+
+    // ---- Overlay windows --------------------------------------------------------
 
     /**
-     * On Android 12+ overlay windows should be added through a window context for the
-     * overlay window type, so the system can give it the right display configuration.
-     * Older versions use the service itself.
+     * On Android 11+ overlay windows should be added through a window context for the
+     * overlay window type, so the system gives it the right display metrics and
+     * configuration. Older versions use the service itself.
      */
     private fun createOverlayContext(): Context {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return this
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return this
         val display = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
-        return createWindowContext(display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-    }
-
-    /** Adds the test bar. Returns false if the system refused the window. */
-    private fun showBar(): Boolean {
-        if (barView != null) return true
-
-        val view = EdgeBarView(overlayContext).apply {
-            setBackgroundColor(TEST_BAR_COLOR)
-            onTouchDown = ::vibrateTick
-        }
-        return try {
-            windowManager.addView(view, testBarLayoutParams())
-            barView = view
-            true
-        } catch (e: WindowManager.BadTokenException) {
-            Log.w(TAG, "Overlay window refused", e)
-            false
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Overlay window refused", e)
-            false
-        }
-    }
-
-    private fun removeBar() {
-        barView?.let { windowManager.removeView(it) }
-        barView = null
+        return createDisplayContext(display)
+            .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
     }
 
     /**
-     * A window that covers only the bar's own rectangle on the right edge.
+     * On Android 12+ the window context reports its own configuration changes, after its
+     * metrics are up to date. The service's own [onConfigurationChanged] covers older
+     * versions; laying out twice is harmless.
+     */
+    private fun registerWindowConfigCallbacks() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val callbacks = object : ComponentCallbacks {
+            override fun onConfigurationChanged(newConfig: Configuration) {
+                if (started) layoutBars()
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onLowMemory() = Unit
+        }
+        overlayContext.registerComponentCallbacks(callbacks)
+        windowConfigCallbacks = callbacks
+    }
+
+    /** Brings the bar windows in line with [config], the screen and [paused]. */
+    private fun layoutBars() {
+        val wanted = if (paused) emptyMap() else wantedBarWindows()
+
+        val iterator = barViews.entries.iterator()
+        while (iterator.hasNext()) {
+            val (key, view) = iterator.next()
+            if (key !in wanted) {
+                windowManager.removeView(view)
+                iterator.remove()
+            }
+        }
+
+        for ((key, window) in wanted) {
+            val params = layoutParamsFor(window.rect)
+            val existing = barViews[key]
+            if (existing != null) {
+                bind(existing, window)
+                windowManager.updateViewLayout(existing, params)
+                continue
+            }
+            val view = EdgeBarView(overlayContext)
+            bind(view, window)
+            try {
+                windowManager.addView(view, params)
+                barViews[key] = view
+            } catch (e: WindowManager.BadTokenException) {
+                Log.w(TAG, "Overlay window refused", e)
+                stopSelf()
+                return
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Overlay window refused", e)
+                stopSelf()
+                return
+            }
+        }
+    }
+
+    private class BarWindow(val rect: PixelRect, val hapticsEnabled: Boolean)
+
+    private fun wantedBarWindows(): Map<String, BarWindow> {
+        val screen = readScreenInfo()
+        val windows = mutableMapOf<String, BarWindow>()
+        for (bar in config.bars.filter { it.enabled }) {
+            BarGeometry.barRects(screen, bar).forEachIndexed { index, rect ->
+                windows["${bar.id}/$index"] = BarWindow(rect, bar.hapticsEnabled)
+            }
+        }
+        return windows
+    }
+
+    private fun bind(view: EdgeBarView, window: BarWindow) {
+        // Transparent windows still receive touches; that is what makes the bars invisible.
+        view.setBackgroundColor(if (config.showBars) VISIBLE_BAR_COLOR else Color.TRANSPARENT)
+        view.onTouchDown = if (window.hapticsEnabled) ::vibrateTick else null
+    }
+
+    /**
+     * A window that covers exactly [rect], in absolute screen coordinates.
      *
      * FLAG_NOT_FOCUSABLE keeps the window from taking key input or the keyboard focus,
      * and implies FLAG_NOT_TOUCH_MODAL: touches outside the rectangle go to whatever is
      * underneath. Overlay windows sit below the keyboard window, so the keyboard stays
-     * usable where it overlaps the bar.
+     * usable where it overlaps a bar.
      */
-    private fun testBarLayoutParams(): WindowManager.LayoutParams {
-        val density = resources.displayMetrics.density
-        val thicknessPx = (TEST_BAR_THICKNESS_DP * density).roundToInt()
-        val lengthPx = (screenHeightPx() * TEST_BAR_LENGTH_FRACTION).roundToInt()
-
-        return WindowManager.LayoutParams(
-            thicknessPx,
-            lengthPx,
+    @SuppressLint("RtlHardcoded") // Positions are absolute screen pixels, not layout-direction relative.
+    private fun layoutParamsFor(rect: PixelRect): WindowManager.LayoutParams =
+        WindowManager.LayoutParams(
+            rect.width,
+            rect.height,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = rect.left
+            y = rect.top
             title = "Fanlet edge bar"
+            // The geometry already keeps bars clear of system bars and cutouts, so let the
+            // window go exactly where it says instead of being pushed away from them.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                fitInsetsTypes = 0
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
+
+    private fun removeAllBars() {
+        barViews.values.forEach { windowManager.removeView(it) }
+        barViews.clear()
     }
 
-    private fun screenHeightPx(): Int =
+    /** Screen size, system bars and cutouts for the current rotation. */
+    private fun readScreenInfo(): ScreenInfo {
+        val density = overlayContext.resources.displayMetrics.density
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager.currentWindowMetrics.bounds.height()
-        } else {
-            overlayContext.resources.displayMetrics.heightPixels
+            val metrics = windowManager.currentWindowMetrics
+            val insets = metrics.windowInsets
+            val systemBars = insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+            return ScreenInfo(
+                widthPx = metrics.bounds.width(),
+                heightPx = metrics.bounds.height(),
+                density = density,
+                systemBarInsets = PixelInsets(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom),
+                cutouts = insets.displayCutout?.boundingRects.orEmpty().map { it.toPixelRect() },
+            )
         }
+
+        // Android 8 to 10: the real display size (including system bars). System bar
+        // sizes are not available to a service there, so bars may extend under them.
+        @Suppress("DEPRECATION")
+        val display = windowManager.defaultDisplay
+        val size = Point()
+        @Suppress("DEPRECATION")
+        display.getRealSize(size)
+        val cutouts = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            display.cutout?.boundingRects.orEmpty().map { it.toPixelRect() }
+        } else {
+            emptyList()
+        }
+        return ScreenInfo(widthPx = size.x, heightPx = size.y, density = density, cutouts = cutouts)
+    }
+
+    private fun Rect.toPixelRect() = PixelRect(left, top, right, bottom)
 
     // ---- Haptics ----------------------------------------------------------------
 
@@ -182,6 +333,16 @@ class OverlayService : Service() {
         }
     }
 
+    /** Re-posts the notification so its text and Pause/Resume action match [paused]. */
+    private fun updateNotification() {
+        val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (allowed) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+        }
+    }
+
     private fun createNotificationChannel() {
         val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
             .setName(getString(R.string.notification_channel_name))
@@ -198,44 +359,62 @@ class OverlayService : Service() {
         val openApp = PendingIntent.getActivity(
             this, REQUEST_OPEN_APP, openAppIntent, PendingIntent.FLAG_IMMUTABLE,
         )
-        val stop = PendingIntent.getService(
-            this,
-            REQUEST_STOP,
-            Intent(this, OverlayService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
+        val pauseOrResume = if (paused) {
+            serviceAction(ACTION_RESUME, REQUEST_RESUME, R.string.notification_action_resume)
+        } else {
+            serviceAction(ACTION_PAUSE, REQUEST_PAUSE, R.string.notification_action_pause)
+        }
+        val stop = serviceAction(ACTION_STOP, REQUEST_STOP, R.string.notification_action_stop)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText(getString(if (paused) R.string.notification_text_paused else R.string.notification_text))
             .setContentIntent(openApp)
-            .addAction(0, getString(R.string.notification_action_stop), stop)
+            .addAction(pauseOrResume)
+            .addAction(stop)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
+    }
+
+    private fun serviceAction(action: String, requestCode: Int, labelRes: Int): NotificationCompat.Action {
+        val intent = PendingIntent.getService(
+            this,
+            requestCode,
+            Intent(this, OverlayService::class.java).setAction(action),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Action.Builder(0, getString(labelRes), intent).build()
     }
 
     companion object {
         private const val TAG = "OverlayService"
 
         private const val ACTION_STOP = "dev.johncastles.fanlet.action.STOP_OVERLAY"
+        private const val ACTION_PAUSE = "dev.johncastles.fanlet.action.PAUSE_OVERLAY"
+        private const val ACTION_RESUME = "dev.johncastles.fanlet.action.RESUME_OVERLAY"
         private const val CHANNEL_ID = "overlay_status"
         private const val NOTIFICATION_ID = 1
         private const val REQUEST_OPEN_APP = 0
         private const val REQUEST_STOP = 1
+        private const val REQUEST_PAUSE = 2
+        private const val REQUEST_RESUME = 3
 
-        // Test bar for the overlay prototype; configurable bars replace these later.
-        private const val TEST_BAR_THICKNESS_DP = 24
-        private const val TEST_BAR_LENGTH_FRACTION = 0.30f
-        private const val TEST_BAR_COLOR = 0x8000BCD4.toInt() // half-transparent cyan
+        /** Bar colour when "Show bars" is on: half-transparent cyan. */
+        private const val VISIBLE_BAR_COLOR = 0x8000BCD4.toInt()
 
         private const val TICK_FALLBACK_MS = 20L
 
         private val runningState = MutableStateFlow(false)
+        private val pausedState = MutableStateFlow(false)
 
-        /** True while the service is running and its bar is on screen. */
+        /** True while the service is running. */
         val isRunning: StateFlow<Boolean> = runningState.asStateFlow()
+
+        /** True while the bars are paused from the notification. */
+        val isPaused: StateFlow<Boolean> = pausedState.asStateFlow()
     }
 }

@@ -15,13 +15,30 @@
     <string name="notification_permission_denied">Notifications are off. You can turn them on in Fanlet’s notification settings.</string>
 
     <string name="service_title">Edge bars</string>
-    <string name="service_description">Shows a test bar on the right edge of the screen. Touch it to feel a short vibration.</string>
+    <string name="service_description">Shows the edge bars on top of other apps.</string>
+    <string name="service_paused">Paused from the notification. Resume it there.</string>
     <string name="service_needs_overlay">Allow “Display over other apps” first.</string>
+
+    <!-- Bar settings -->
+    <string name="section_bars">Bars</string>
+    <string name="show_bars_title">Show bars</string>
+    <string name="show_bars_description">Draws the bars in colour so you can position them. When off, they are invisible but still respond to touch.</string>
+    <string name="bar_left_title">Left bar</string>
+    <string name="bar_right_title">Right bar</string>
+    <string name="bar_thickness">Thickness</string>
+    <string name="bar_length">Length</string>
+    <string name="bar_position">Position (top to bottom)</string>
+    <string name="bar_haptics">Vibrate on touch</string>
+    <string name="value_dp">%1$d dp</string>
+    <string name="value_percent">%1$d%%</string>
 
     <!-- Foreground service notification -->
     <string name="notification_channel_name">Edge bars status</string>
     <string name="notification_channel_description">Shown while the edge bars are on.</string>
     <string name="notification_title">Fanlet is active</string>
     <string name="notification_text">Edge bars are on</string>
+    <string name="notification_text_paused">Edge bars are paused</string>
+    <string name="notification_action_pause">Pause</string>
+    <string name="notification_action_resume">Resume</string>
     <string name="notification_action_stop">Stop</string>
 </resources>

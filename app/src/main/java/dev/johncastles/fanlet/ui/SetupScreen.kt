@@ -22,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.johncastles.fanlet.R
+import dev.johncastles.fanlet.config.BarConfig
+import dev.johncastles.fanlet.config.FanletConfig
 import dev.johncastles.fanlet.ui.theme.FanletTheme
 
 /** Everything the setup screen shows. Built by the activity, which owns the real state. */
@@ -33,6 +35,8 @@ data class SetupState(
     /** The user denied the notification request; the system will not ask again. */
     val notificationsDenied: Boolean,
     val serviceRunning: Boolean,
+    val servicePaused: Boolean,
+    val config: FanletConfig,
 )
 
 @Composable
@@ -42,6 +46,8 @@ fun SetupScreen(
     onRequestNotifications: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onServiceToggled: (Boolean) -> Unit,
+    onShowBarsChanged: (Boolean) -> Unit,
+    onBarChanged: (BarConfig) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -82,9 +88,19 @@ fun SetupScreen(
 
         ServiceCard(
             running = state.serviceRunning,
+            paused = state.servicePaused,
             enabled = state.overlayAllowed,
             onToggled = onServiceToggled,
         )
+
+        Text(
+            text = stringResource(R.string.section_bars),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        ShowBarsCard(showBars = state.config.showBars, onShowBarsChanged = onShowBarsChanged)
+        for (bar in state.config.bars) {
+            BarSettingsCard(bar = bar, onBarChanged = onBarChanged)
+        }
     }
 }
 
@@ -123,7 +139,7 @@ private fun PermissionCard(
 }
 
 @Composable
-private fun ServiceCard(running: Boolean, enabled: Boolean, onToggled: (Boolean) -> Unit) {
+private fun ServiceCard(running: Boolean, paused: Boolean, enabled: Boolean, onToggled: (Boolean) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -132,7 +148,13 @@ private fun ServiceCard(running: Boolean, enabled: Boolean, onToggled: (Boolean)
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = stringResource(R.string.service_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = stringResource(if (enabled) R.string.service_description else R.string.service_needs_overlay),
+                    text = stringResource(
+                        when {
+                            !enabled -> R.string.service_needs_overlay
+                            running && paused -> R.string.service_paused
+                            else -> R.string.service_description
+                        }
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -153,11 +175,15 @@ private fun SetupScreenMissingPermissionsPreview() {
                 notificationsAllowed = false,
                 notificationsDenied = false,
                 serviceRunning = false,
+                servicePaused = false,
+                config = FanletConfig.DEFAULT,
             ),
             onOpenOverlaySettings = {},
             onRequestNotifications = {},
             onOpenNotificationSettings = {},
             onServiceToggled = {},
+            onShowBarsChanged = {},
+            onBarChanged = {},
         )
     }
 }
@@ -173,11 +199,15 @@ private fun SetupScreenRunningPreview() {
                 notificationsAllowed = true,
                 notificationsDenied = false,
                 serviceRunning = true,
+                servicePaused = false,
+                config = FanletConfig.DEFAULT.copy(showBars = true),
             ),
             onOpenOverlaySettings = {},
             onRequestNotifications = {},
             onOpenNotificationSettings = {},
             onServiceToggled = {},
+            onShowBarsChanged = {},
+            onBarChanged = {},
         )
     }
 }

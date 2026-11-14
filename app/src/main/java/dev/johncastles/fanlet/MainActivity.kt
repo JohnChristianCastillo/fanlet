@@ -40,6 +40,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             FanletTheme {
                 val serviceRunning by OverlayService.isRunning.collectAsState()
+                val servicePaused by OverlayService.isPaused.collectAsState()
+                val config by configRepository.config.collectAsState()
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { granted ->
@@ -55,6 +57,8 @@ class MainActivity : ComponentActivity() {
                             notificationsAllowed = notificationsAllowed,
                             notificationsDenied = notificationsDenied,
                             serviceRunning = serviceRunning,
+                            servicePaused = servicePaused,
+                            config = config,
                         ),
                         onOpenOverlaySettings = ::openOverlaySettings,
                         onRequestNotifications = {
@@ -64,6 +68,8 @@ class MainActivity : ComponentActivity() {
                         },
                         onOpenNotificationSettings = ::openNotificationSettings,
                         onServiceToggled = { on -> if (on) startOverlayService() else stopOverlayService() },
+                        onShowBarsChanged = { show -> configRepository.update { it.copy(showBars = show) } },
+                        onBarChanged = { bar -> configRepository.update { it.withBar(bar) } },
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
