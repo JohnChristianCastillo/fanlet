@@ -79,6 +79,22 @@ fun PieSettingsCard(appearance: PieAppearance, onAppearanceChanged: (PieAppearan
                 primarySize = appearance.iconSizeDp.dp,
                 secondaryScale = appearance.secondaryIconScale,
             )
+
+            LabeledSlider(
+                label = stringResource(R.string.hold_time),
+                valueText = stringResource(R.string.value_ms, appearance.holdMs),
+                value = appearance.holdMs.toFloat(),
+                range = PieAppearance.MIN_HOLD_MS.toFloat()..PieAppearance.MAX_HOLD_MS.toFloat(),
+                // Steps of 50 ms are fine enough and easier to hit than single milliseconds.
+                onValueChange = { onAppearanceChanged(appearance.copy(holdMs = (it / 50).roundToInt() * 50)) },
+            )
+
+            SwitchRow(
+                title = stringResource(R.string.dim_background),
+                description = stringResource(R.string.dim_background_description),
+                checked = appearance.dimBackground,
+                onCheckedChange = { onAppearanceChanged(appearance.copy(dimBackground = it)) },
+            )
         }
     }
 }

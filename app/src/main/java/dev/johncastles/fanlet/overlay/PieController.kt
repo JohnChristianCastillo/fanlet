@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
+import dev.johncastles.fanlet.R
 import dev.johncastles.fanlet.apps.AppInfoCache
 import dev.johncastles.fanlet.config.BarConfig
 import dev.johncastles.fanlet.config.PieAppearance
@@ -89,6 +90,7 @@ class PieController(
             pieLayout = layout
             iconSizePx = appearance.iconSizeDp * screen.density
             secondaryIconScale = appearance.secondaryIconScale
+            dimBackground = appearance.dimBackground
             items = slices.map { slice ->
                 PieView.Item(
                     primary = entryFor(slice.primaryPackage),
@@ -111,7 +113,7 @@ class PieController(
         session = Session(
             layout = layout,
             slices = slices,
-            selection = PieSelection(HOLD_MS) { index -> slices[index].secondaryPackage != null },
+            selection = PieSelection(appearance.holdMs.toLong()) { index -> slices[index].secondaryPackage != null },
             hapticsEnabled = bar.hapticsEnabled,
             view = view,
         )
@@ -190,7 +192,14 @@ class PieController(
         pieViews.toList().forEach(::removePie)
     }
 
+    /**
+     * What a slice shows for [packageName]. An uninstalled app keeps its slice but shows a
+     * placeholder; releasing on it does nothing, because it has no launch intent.
+     */
     private fun entryFor(packageName: String): PieView.Entry {
+        if (appInfo.isMissing(packageName)) {
+            return PieView.Entry(label = context.getString(R.string.app_not_installed), icon = null)
+        }
         val info = appInfo.get(packageName)
         return PieView.Entry(label = info?.label ?: packageName, icon = info?.icon)
     }
@@ -221,8 +230,5 @@ class PieController(
 
     private companion object {
         const val TAG = "PieController"
-
-        // Fixed for now; configurable later.
-        const val HOLD_MS = 500L
     }
 }

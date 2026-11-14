@@ -1,44 +1,101 @@
 <resources>
     <string name="app_name">Fanlet</string>
 
-    <!-- Setup screen -->
-    <string name="status_allowed">Allowed</string>
-    <string name="status_not_allowed">Not allowed</string>
+    <!-- Common -->
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_remove">Remove</string>
+    <string name="app_not_installed">Not installed</string>
+    <string name="value_dp">%1$d dp</string>
+    <string name="value_percent">%1$d%%</string>
+    <string name="value_ms">%1$d ms</string>
+
+    <!-- Home screen: setup cards (only shown while something is missing) -->
     <string name="action_open_settings">Open settings</string>
     <string name="action_allow">Allow</string>
-
     <string name="overlay_permission_title">Display over other apps</string>
     <string name="overlay_permission_description">Needed to show the edge bars on top of other apps. On Samsung phones this setting is called “Appear on top”.</string>
-
     <string name="notification_permission_title">Notifications</string>
     <string name="notification_permission_description">Used only for the “Fanlet is active” notification while the edge bars are on. Fanlet works without it.</string>
-    <string name="notification_permission_denied">Notifications are off. You can turn them on in Fanlet’s notification settings.</string>
 
+    <!-- Home screen: on/off -->
     <string name="service_title">Edge bars</string>
-    <string name="service_description">Shows the edge bars on top of other apps.</string>
+    <string name="service_on">On. Touch a screen edge to open the pie.</string>
+    <string name="service_off">Off</string>
     <string name="service_paused">Paused from the notification. Resume it there.</string>
     <string name="service_needs_overlay">Allow “Display over other apps” first.</string>
 
-    <!-- Bar settings -->
-    <string name="section_bars">Bars</string>
-    <string name="show_bars_title">Show bars</string>
-    <string name="show_bars_description">Draws the bars in colour so you can position them. When off, they are invisible but still respond to touch.</string>
-    <string name="bar_left_title">Left bar</string>
-    <string name="bar_right_title">Right bar</string>
-    <string name="bar_thickness">Thickness</string>
-    <string name="bar_length">Length</string>
-    <string name="bar_position">Position (top to bottom)</string>
-    <string name="bar_haptics">Vibrate on touch</string>
-    <!-- Pie settings -->
+    <!-- Pie: apps -->
     <string name="section_pie">Pie</string>
+    <string name="apps_title">Apps</string>
+    <string name="apps_none">No apps yet</string>
+    <plurals name="app_count">
+        <item quantity="one">%1$d app</item>
+        <item quantity="other">%1$d apps</item>
+    </plurals>
+    <string name="apps_description">Both bars open this pie. The first app is the top slice; tap an app to change it.</string>
+    <string name="apps_empty_hint">No apps yet, so touching a bar only vibrates. Add apps to fill the pie; both bars open the same pie.</string>
+    <plurals name="slices_full">
+        <item quantity="one">A pie holds up to %1$d app.</item>
+        <item quantity="other">A pie holds up to %1$d apps.</item>
+    </plurals>
+    <string name="action_add_app">Add app</string>
+    <string name="action_change_app">Change app</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
+    <string name="action_remove_slice">Remove slice</string>
+    <string name="action_add_secondary">Add second app</string>
+    <string name="secondary_label">Hold:</string>
+
+    <!-- App picker -->
+    <string name="picker_title">Choose app</string>
+    <string name="picker_title_secondary">Choose second app</string>
+    <string name="picker_search">Search apps</string>
+    <string name="picker_no_match">No apps match.</string>
+
+    <!-- Pie: appearance -->
+    <string name="appearance_title">Appearance</string>
+    <string name="appearance_summary">Size %1$d%% · hold %2$d ms</string>
     <string name="pie_size">Pie size</string>
     <string name="pie_size_description">How far the pie reaches into the screen. At 100% it reaches the other side of the screen held upright.</string>
     <string name="icon_size">App icon size</string>
     <string name="secondary_icon_size">Second app icon size</string>
     <string name="secondary_icon_size_description">A slice can hold a second app, opened by holding still on the slice. Its icon is shown next to the main app’s icon at this size.</string>
+    <string name="hold_time">Hold time for second app</string>
+    <string name="dim_background">Dim the background</string>
+    <string name="dim_background_description">Darkens the rest of the screen while the pie is open.</string>
 
-    <string name="value_dp">%1$d dp</string>
-    <string name="value_percent">%1$d%%</string>
+    <!-- Bars -->
+    <string name="section_bars">Bars</string>
+    <string name="show_bars_title">Show bars</string>
+    <string name="show_bars_summary">Colour the bars so you can position them</string>
+    <string name="bar_left_title">Left bar</string>
+    <string name="bar_right_title">Right bar</string>
+    <string name="bar_on">On</string>
+    <string name="bar_off">Off</string>
+    <string name="bar_enabled">Use this bar</string>
+    <string name="bar_thickness">Thickness</string>
+    <string name="bar_length">Length</string>
+    <string name="bar_position">Position (top to bottom)</string>
+    <string name="bar_haptics">Vibrate on touch</string>
+
+    <!-- Backup -->
+    <string name="section_backup">Backup</string>
+    <string name="export_title">Export settings</string>
+    <string name="export_summary">Save all settings to a file you choose</string>
+    <string name="import_title">Import settings</string>
+    <string name="import_summary">Load settings from a file</string>
+    <string name="export_done">Settings exported.</string>
+    <string name="export_failed">Could not save the file.</string>
+    <string name="import_confirm_title">Replace settings?</string>
+    <string name="import_confirm_text">Your current apps, bars and pie settings will be replaced by the ones in this file.</string>
+    <string name="action_replace">Replace</string>
+    <string name="import_done">Settings imported.</string>
+    <string name="import_failed_read">Could not read the file.</string>
+    <string name="import_failed_too_large">This file is too large to be a Fanlet settings file.</string>
+    <string name="import_failed_not_fanlet">This file does not contain Fanlet settings.</string>
+    <string name="import_failed_newer">These settings come from a newer version of Fanlet. Update Fanlet and try again.</string>
+    <string name="import_failed_invalid">This settings file is damaged or contains invalid values.</string>
 
     <!-- Foreground service notification -->
     <string name="notification_channel_name">Edge bars status</string>

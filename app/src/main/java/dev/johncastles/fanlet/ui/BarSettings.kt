@@ -24,36 +24,25 @@ import dev.johncastles.fanlet.config.Edge
 import dev.johncastles.fanlet.ui.theme.FanletTheme
 import kotlin.math.roundToInt
 
-/** The global "Show bars" switch. */
+/** "Left bar" or "Right bar". */
 @Composable
-fun ShowBarsCard(showBars: Boolean, onShowBarsChanged: (Boolean) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        SwitchRow(
-            title = stringResource(R.string.show_bars_title),
-            description = stringResource(R.string.show_bars_description),
-            checked = showBars,
-            onCheckedChange = onShowBarsChanged,
-            modifier = Modifier.padding(16.dp),
-        )
+fun barTitle(bar: BarConfig): String = stringResource(
+    when (bar.edge) {
+        Edge.LEFT -> R.string.bar_left_title
+        Edge.RIGHT -> R.string.bar_right_title
     }
-}
+)
 
-/** All settings of one bar. Every change is reported at once, so the bar moves while dragging. */
+/** Position and feel of one bar. Every change is reported at once, so the bar moves while dragging. */
 @Composable
 fun BarSettingsCard(bar: BarConfig, onBarChanged: (BarConfig) -> Unit) {
-    val title = stringResource(
-        when (bar.edge) {
-            Edge.LEFT -> R.string.bar_left_title
-            Edge.RIGHT -> R.string.bar_right_title
-        }
-    )
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SwitchRow(
-                title = title,
+                title = stringResource(R.string.bar_enabled),
                 description = null,
                 checked = bar.enabled,
                 onCheckedChange = { onBarChanged(bar.copy(enabled = it)) },
@@ -92,7 +81,7 @@ fun BarSettingsCard(bar: BarConfig, onBarChanged: (BarConfig) -> Unit) {
 }
 
 @Composable
-private fun SwitchRow(
+internal fun SwitchRow(
     title: String,
     description: String?,
     checked: Boolean,

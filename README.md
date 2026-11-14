@@ -5,8 +5,8 @@ screen. Press a bar and a half-ring pie of app shortcuts fans out under your fin
 slide to an app and let go to open it. Hold still on a slice to switch it to a second
 app.
 
-**Status:** early development. The repository currently contains the project
-skeleton; the features above are being built.
+**Status:** early development. The features above work; release builds and
+downloads are still to come.
 
 ## Privacy
 
@@ -29,6 +29,8 @@ that anyone can check what it can and cannot do:
   Fanlet is excluded from backup and transfer entirely. The rules are in
   [`data_extraction_rules.xml`](app/src/main/res/xml/data_extraction_rules.xml) and
   [`backup_rules.xml`](app/src/main/res/xml/backup_rules.xml).
+- **Export and import only touch the file you pick.** Settings are saved to and loaded
+  from a file through the system file picker, so Fanlet needs no storage permission.
 
 ### Permissions
 

@@ -32,11 +32,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.johncastles.fanlet.MainActivity
 import dev.johncastles.fanlet.R
-import dev.johncastles.fanlet.apps.AppInfoCache
-import dev.johncastles.fanlet.apps.LaunchableApps
+import dev.johncastles.fanlet.appInfoCache
 import dev.johncastles.fanlet.config.BarConfig
 import dev.johncastles.fanlet.config.FanletConfig
-import dev.johncastles.fanlet.config.SliceConfig
 import dev.johncastles.fanlet.configRepository
 import dev.johncastles.fanlet.geometry.BarGeometry
 import dev.johncastles.fanlet.geometry.PixelInsets
@@ -50,7 +48,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Foreground service that owns the overlay windows: the edge bars, and (through
@@ -64,13 +61,11 @@ import kotlinx.coroutines.withContext
 class OverlayService : Service() {
 
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Context used for overlay windows; see [createOverlayContext]. */
     private lateinit var overlayContext: Context
     private lateinit var windowManager: WindowManager
     private lateinit var haptics: Haptics
-    private lateinit var appInfo: AppInfoCache
     private lateinit var pie: PieController
 
     /** Screen info from the last layout, reused when a pie opens. */
@@ -78,9 +73,6 @@ class OverlayService : Service() {
 
     /** The bar window whose touch gesture is driving the pie, if any. */
     private var activeBarView: EdgeBarView? = null
-
-    /** TEMPORARY: see [DebugPieDefaults]. Loaded in the background when the service starts. */
-    private var debugSlices: List<SliceConfig> = emptyList()
 
     /** Bar windows on screen, keyed by "<bar id>/<piece index>". */
     private val barViews = mutableMapOf<String, EdgeBarView>()
@@ -97,8 +89,7 @@ class OverlayService : Service() {
         overlayContext = createOverlayContext()
         windowManager = overlayContext.getSystemService(WindowManager::class.java)
         haptics = Haptics(this)
-        appInfo = AppInfoCache(packageManager, ioScope)
-        pie = PieController(overlayContext, windowManager, haptics, appInfo, ::launchApp)
+        pie = PieController(overlayContext, windowManager, haptics, appInfoCache, ::launchApp)
         registerWindowConfigCallbacks()
     }
 
@@ -120,7 +111,6 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         mainScope.cancel()
-        ioScope.cancel()
         windowConfigCallbacks?.let { overlayContext.unregisterComponentCallbacks(it) }
         pie.dismiss()
         removeAllBars()
@@ -148,12 +138,6 @@ class OverlayService : Service() {
                 prefetchIcons()
                 layoutBars()
             }
-        }
-        mainScope.launch {
-            debugSlices = withContext(Dispatchers.IO) {
-                DebugPieDefaults.slices(LaunchableApps.query(packageManager), packageName)
-            }
-            prefetchIcons()
         }
     }
 
@@ -291,7 +275,7 @@ class OverlayService : Service() {
                 if (bar.hapticsEnabled) haptics.barTouched()
                 pie.start(
                     bar = bar,
-                    slices = slicesFor(bar),
+                    slices = config.slices.take(FanletConfig.MAX_SLICES),
                     appearance = config.pie,
                     screen = screen,
                     x = event.rawX,
@@ -314,15 +298,10 @@ class OverlayService : Service() {
         }
     }
 
-    /** The bar's own slices, or the temporary debug slices while none are configured. */
-    private fun slicesFor(bar: BarConfig): List<SliceConfig> =
-        bar.slices.ifEmpty { debugSlices }.take(MAX_SLICES)
-
-    /** Loads icons for every app the pies can show, so a pie never waits for one. */
+    /** Loads icons for every app the pie can show, so it never waits for one. */
     private fun prefetchIcons() {
-        val packages = (config.bars.flatMap { it.slices } + debugSlices)
-            .flatMap { listOfNotNull(it.primaryPackage, it.secondaryPackage) }
-        appInfo.prefetch(packages)
+        val packages = config.slices.flatMap { listOfNotNull(it.primaryPackage, it.secondaryPackage) }
+        appInfoCache.prefetch(packages)
     }
 
     private fun launchApp(packageName: String) {
@@ -495,7 +474,6 @@ class OverlayService : Service() {
         /** Bar colour when "Show bars" is on: half-transparent cyan. */
         private const val VISIBLE_BAR_COLOR = 0x8000BCD4.toInt()
 
-        private const val MAX_SLICES = 8
 
         private val runningState = MutableStateFlow(false)
         private val pausedState = MutableStateFlow(false)

@@ -1,7 +1,10 @@
 package dev.johncastles.fanlet.config
 
+import dev.johncastles.fanlet.config.ConfigCodec.ParseError
+import dev.johncastles.fanlet.config.ConfigCodec.ParseResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfigCodecTest {
@@ -10,7 +13,17 @@ class ConfigCodecTest {
     fun roundTrip_keepsEverything() {
         val config = FanletConfig(
             showBars = true,
-            pie = PieAppearance(sizeFraction = 0.8f, iconSizeDp = 56, secondaryIconScale = 0.45f),
+            pie = PieAppearance(
+                sizeFraction = 0.8f,
+                iconSizeDp = 56,
+                secondaryIconScale = 0.45f,
+                dimBackground = false,
+                holdMs = 750,
+            ),
+            slices = listOf(
+                SliceConfig("org.example.mail", secondaryPackage = "org.example.chat"),
+                SliceConfig("org.example.maps"),
+            ),
             bars = listOf(
                 BarConfig(
                     id = "left",
@@ -20,7 +33,6 @@ class ConfigCodecTest {
                     lengthFraction = 0.6f,
                     centerFraction = 0.25f,
                     hapticsEnabled = false,
-                    slices = listOf(SliceConfig("org.example.mail", secondaryPackage = "org.example.chat")),
                 ),
                 BarConfig(id = "right", edge = Edge.RIGHT),
             ),
@@ -92,6 +104,90 @@ class ConfigCodecTest {
         // Files saved before these settings existed.
         val decoded = ConfigCodec.decode("""{"schemaVersion": 1, "showBars": true}""")!!
         assertEquals(PieAppearance(), decoded.pie)
+    }
+
+    @Test
+    fun holdTime_isClamped() {
+        val short = ConfigCodec.decode("""{"schemaVersion": 1, "pie": {"holdMs": 10}}""")!!
+        assertEquals(PieAppearance.MIN_HOLD_MS, short.pie.holdMs)
+        val long = ConfigCodec.decode("""{"schemaVersion": 1, "pie": {"holdMs": 60000}}""")!!
+        assertEquals(PieAppearance.MAX_HOLD_MS, long.pie.holdMs)
+    }
+
+    // ---- Import validation: why a file is rejected ------------------------------------
+
+    private fun errorOf(text: String): ParseError? = (ConfigCodec.parse(text) as? ParseResult.Failure)?.error
+
+    @Test
+    fun parse_notJson() {
+        assertEquals(ParseError.NOT_JSON, errorOf("this is a shopping list"))
+        assertEquals(ParseError.NOT_JSON, errorOf(""))
+    }
+
+    @Test
+    fun parse_jsonThatIsNotAFanletConfig() {
+        assertEquals(ParseError.NOT_A_FANLET_CONFIG, errorOf("[1, 2, 3]"))
+        assertEquals(ParseError.NOT_A_FANLET_CONFIG, errorOf("""{"name": "something else"}"""))
+        assertEquals(ParseError.NOT_A_FANLET_CONFIG, errorOf("""{"schemaVersion": "one"}"""))
+    }
+
+    @Test
+    fun parse_newerVersion() {
+        val newer = FanletConfig.CURRENT_SCHEMA_VERSION + 1
+        assertEquals(ParseError.NEWER_VERSION, errorOf("""{"schemaVersion": $newer}"""))
+    }
+
+    @Test
+    fun parse_damagedContent() {
+        assertEquals(ParseError.INVALID_CONTENT, errorOf("""{"schemaVersion": 0}"""))
+        assertEquals(ParseError.INVALID_CONTENT, errorOf("""{"schemaVersion": 1, "bars": "left"}"""))
+        assertEquals(ParseError.INVALID_CONTENT, errorOf("""{"schemaVersion": 1, "bars": [{"id": "x"}]}"""))
+    }
+
+    @Test
+    fun parse_exportedConfig_succeeds() {
+        val config = FanletConfig.DEFAULT.withSliceAdded("org.example.mail")
+        val result = ConfigCodec.parse(ConfigCodec.encode(config))
+        assertTrue(result is ParseResult.Success)
+        assertEquals(config, (result as ParseResult.Success).config)
+    }
+
+    // ---- Migration from version 1 (a slice list per bar) --------------------------------
+
+    @Test
+    fun version1_firstBarWithSlices_becomesSharedList() {
+        val v1 = """
+            {"schemaVersion": 1, "bars": [
+              {"id": "left", "edge": "LEFT", "slices": []},
+              {"id": "right", "edge": "RIGHT", "slices": [
+                {"primaryPackage": "org.example.mail", "secondaryPackage": "org.example.chat"},
+                {"primaryPackage": "org.example.maps"}
+              ]}
+            ]}
+        """.trimIndent()
+        val migrated = ConfigCodec.decode(v1)!!
+        assertEquals(FanletConfig.CURRENT_SCHEMA_VERSION, migrated.schemaVersion)
+        assertEquals(
+            listOf(SliceConfig("org.example.mail", "org.example.chat"), SliceConfig("org.example.maps")),
+            migrated.slices,
+        )
+        assertEquals(listOf("left", "right"), migrated.bars.map { it.id })
+    }
+
+    @Test
+    fun version1_bothBarsWithSlices_leftBarWins() {
+        val v1 = """
+            {"schemaVersion": 1, "bars": [
+              {"id": "left", "edge": "LEFT", "slices": [{"primaryPackage": "a"}]},
+              {"id": "right", "edge": "RIGHT", "slices": [{"primaryPackage": "b"}]}
+            ]}
+        """.trimIndent()
+        assertEquals(listOf(SliceConfig("a")), ConfigCodec.decode(v1)!!.slices)
+    }
+
+    @Test
+    fun version1_withoutSlices_givesEmptyList() {
+        assertEquals(emptyList<SliceConfig>(), ConfigCodec.decode("""{"schemaVersion": 1}""")!!.slices)
     }
 
     @Test
