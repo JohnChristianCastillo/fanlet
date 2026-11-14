@@ -36,14 +36,16 @@ import dev.johncastles.fanlet.config.FanletConfig
 import dev.johncastles.fanlet.config.SliceConfig
 import dev.johncastles.fanlet.ui.theme.FanletTheme
 
-/** Which app the picker is choosing: for a new slice, or a slice's main or second app. */
-data class AppPickTarget(val sliceIndex: Int?, val secondary: Boolean) {
-    companion object {
-        val NEW_SLICE = AppPickTarget(sliceIndex = null, secondary = false)
-    }
-}
+/**
+ * Which app the picker is choosing: for a new slot in [layer] ([slotIndex] null), or a
+ * slot's main or second app.
+ */
+data class AppPickTarget(val layer: Int, val slotIndex: Int?, val secondary: Boolean)
 
-/** The pie's apps, shared by both bars, top slice first. */
+/**
+ * The pie's apps, shared by both bars, top slot first. Edits the innermost layer only;
+ * tabs for the other layers come in a later milestone.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppsScreen(
@@ -65,28 +67,34 @@ fun AppsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            val layer = 0
+            val slots = config.layers.getOrNull(layer)?.slices.orEmpty()
             Text(
-                text = stringResource(if (config.slices.isEmpty()) R.string.apps_empty_hint else R.string.apps_description),
+                text = stringResource(if (slots.isEmpty()) R.string.apps_empty_hint else R.string.apps_description),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            config.slices.forEachIndexed { index, slice ->
+            slots.forEachIndexed { index, slot ->
                 SliceCard(
-                    slice = slice,
+                    slice = slot,
                     canMoveUp = index > 0,
-                    canMoveDown = index < config.slices.lastIndex,
-                    onChangePrimary = { onPickApp(AppPickTarget(index, secondary = false)) },
-                    onChooseSecondary = { onPickApp(AppPickTarget(index, secondary = true)) },
-                    onRemoveSecondary = { updateConfig { it.withSliceSecondary(index, null) } },
-                    onMoveUp = { updateConfig { it.withSliceMoved(index, index - 1) } },
-                    onMoveDown = { updateConfig { it.withSliceMoved(index, index + 1) } },
-                    onRemove = { updateConfig { it.withSliceRemoved(index) } },
+                    canMoveDown = index < slots.lastIndex,
+                    onChangePrimary = { onPickApp(AppPickTarget(layer, index, secondary = false)) },
+                    onChooseSecondary = { onPickApp(AppPickTarget(layer, index, secondary = true)) },
+                    onRemoveSecondary = { updateConfig { it.withSlotSecondary(layer, index, null) } },
+                    onMoveUp = { updateConfig { it.withSlotMoved(layer, index, index - 1) } },
+                    onMoveDown = { updateConfig { it.withSlotMoved(layer, index, index + 1) } },
+                    onRemove = { updateConfig { it.withSlotRemoved(layer, index) } },
                 )
             }
-            if (config.canAddSlice) {
-                Button(onClick = { onPickApp(AppPickTarget.NEW_SLICE) }) { Text(stringResource(R.string.action_add_app)) }
+            if (config.canAddSlot(layer)) {
+                Button(onClick = { onPickApp(AppPickTarget(layer, slotIndex = null, secondary = false)) }) {
+                    Text(stringResource(R.string.action_add_app))
+                }
             } else {
                 Text(
-                    text = pluralStringResource(R.plurals.slices_full, FanletConfig.MAX_SLICES, FanletConfig.MAX_SLICES),
+                    text = pluralStringResource(
+                        R.plurals.slices_full, FanletConfig.MAX_SLOTS_PER_LAYER, FanletConfig.MAX_SLOTS_PER_LAYER,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -191,9 +199,9 @@ private fun AppsScreenPreview() {
     FanletTheme {
         AppsScreen(
             config = FanletConfig.DEFAULT
-                .withSliceAdded("org.example.mail")
-                .withSliceAdded("org.example.maps")
-                .withSliceSecondary(0, "org.example.chat"),
+                .withSlotAdded(0, "org.example.mail")
+                .withSlotAdded(0, "org.example.maps")
+                .withSlotSecondary(0, 0, "org.example.chat"),
             updateConfig = {},
             onPickApp = {},
             onBack = {},

@@ -275,7 +275,7 @@ class OverlayService : Service() {
                 if (bar.hapticsEnabled) haptics.barTouched()
                 pie.start(
                     bar = bar,
-                    slices = config.slices.take(FanletConfig.MAX_SLICES),
+                    layers = config.layers,
                     appearance = config.pie,
                     screen = screen,
                     x = event.rawX,
@@ -300,7 +300,9 @@ class OverlayService : Service() {
 
     /** Loads icons for every app the pie can show, so it never waits for one. */
     private fun prefetchIcons() {
-        val packages = config.slices.flatMap { listOfNotNull(it.primaryPackage, it.secondaryPackage) }
+        val packages = config.layers
+            .flatMap { it.slices }
+            .flatMap { listOfNotNull(it.primaryPackage, it.secondaryPackage) }
         appInfoCache.prefetch(packages)
     }
 

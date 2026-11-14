@@ -54,8 +54,11 @@ data class BarConfig(
 data class PieAppearance(
     /** Outer radius as a fraction of the screen's shorter side; 1.0 reaches across a portrait screen. */
     val sizeFraction: Float = DEFAULT_SIZE_FRACTION,
-    /** Size of a slice's main app icon. Icons shrink when a slice is too small for them. */
-    val iconSizeDp: Int = DEFAULT_ICON_SIZE_DP,
+    /**
+     * Size of a slot's main app icon as a fraction of the space the slot has (the smaller
+     * of the ring's depth and the slot's width), so icons fit every ring.
+     */
+    val iconSizeFraction: Float = DEFAULT_ICON_SIZE_FRACTION,
     /** Size of a slice's secondary app icon relative to its main app icon. */
     val secondaryIconScale: Float = DEFAULT_SECONDARY_ICON_SCALE,
     /** Darken the rest of the screen while the pie is open. */
@@ -66,7 +69,9 @@ data class PieAppearance(
     /** A copy with every value inside its allowed range. */
     fun normalized(): PieAppearance = copy(
         sizeFraction = sizeFraction.coerceInOrDefault(MIN_SIZE_FRACTION, MAX_SIZE_FRACTION, DEFAULT_SIZE_FRACTION),
-        iconSizeDp = iconSizeDp.coerceIn(MIN_ICON_SIZE_DP, MAX_ICON_SIZE_DP),
+        iconSizeFraction = iconSizeFraction.coerceInOrDefault(
+            MIN_ICON_SIZE_FRACTION, MAX_ICON_SIZE_FRACTION, DEFAULT_ICON_SIZE_FRACTION,
+        ),
         secondaryIconScale = secondaryIconScale.coerceInOrDefault(
             MIN_SECONDARY_ICON_SCALE, MAX_SECONDARY_ICON_SCALE, DEFAULT_SECONDARY_ICON_SCALE,
         ),
@@ -82,15 +87,19 @@ data class PieAppearance(
         const val MAX_SIZE_FRACTION = 1.0f
         const val DEFAULT_SIZE_FRACTION = 0.35f
 
-        const val MIN_ICON_SIZE_DP = 24
-        const val MAX_ICON_SIZE_DP = 96
-        const val DEFAULT_ICON_SIZE_DP = 40
+        const val MIN_ICON_SIZE_FRACTION = 0.4f
+        const val MAX_ICON_SIZE_FRACTION = 1.0f
+        const val DEFAULT_ICON_SIZE_FRACTION = 0.7f
 
         const val MIN_SECONDARY_ICON_SCALE = 0.3f
         const val MAX_SECONDARY_ICON_SCALE = 1.0f
         const val DEFAULT_SECONDARY_ICON_SCALE = 0.6f
     }
 }
+
+/** One ring of the pie: its apps, in order from the top of the ring to the bottom. */
+@Serializable
+data class PieLayer(val slices: List<SliceConfig> = emptyList())
 
 /** Everything the user can configure. Stored as JSON; see [ConfigCodec]. */
 @Serializable
@@ -100,67 +109,109 @@ data class FanletConfig(
     val showBars: Boolean = false,
     val pie: PieAppearance = PieAppearance(),
     /**
-     * The pie's apps, top slice first, shared by every bar (one bar per hand). At most
-     * [MAX_SLICES]; empty means touching a bar only vibrates.
+     * The pie's rings, innermost first, shared by every bar (one bar per hand). Only
+     * layers with apps exist: at most [MAX_LAYERS], each with 1 to [MAX_SLOTS_PER_LAYER]
+     * slots. Empty means touching a bar only vibrates.
      */
-    val slices: List<SliceConfig> = emptyList(),
+    val layers: List<PieLayer> = emptyList(),
     val bars: List<BarConfig> = defaultBars(),
 ) {
     /**
-     * A copy with every value inside its allowed range: default bars if none are left,
-     * slices without an app dropped, blank secondary apps removed, at most [MAX_SLICES].
+     * A copy with every value inside its allowed range: default bars if none are left;
+     * slots without an app dropped and blank secondary apps removed; at most
+     * [MAX_SLOTS_PER_LAYER] slots per layer; empty layers removed so the next one moves
+     * in; at most [MAX_LAYERS] layers.
      */
     fun normalized(): FanletConfig = copy(
         pie = pie.normalized(),
-        slices = slices
-            .filter { it.primaryPackage.isNotBlank() }
-            .map { if (it.secondaryPackage.isNullOrBlank()) it.copy(secondaryPackage = null) else it }
-            .take(MAX_SLICES),
+        layers = layers
+            .map { layer ->
+                PieLayer(
+                    layer.slices
+                        .filter { it.primaryPackage.isNotBlank() }
+                        .map { if (it.secondaryPackage.isNullOrBlank()) it.copy(secondaryPackage = null) else it }
+                        .take(MAX_SLOTS_PER_LAYER)
+                )
+            }
+            .filter { it.slices.isNotEmpty() }
+            .take(MAX_LAYERS),
         bars = if (bars.isEmpty()) defaultBars() else bars.map { it.normalized() },
     )
+
+    /** Number of apps in all layers together. */
+    val slotCount: Int get() = layers.sumOf { it.slices.size }
 
     /** A copy with the bar that has [updated]'s id replaced by [updated]. */
     fun withBar(updated: BarConfig): FanletConfig =
         copy(bars = bars.map { if (it.id == updated.id) updated else it })
 
-    // ---- Slice editing. Each returns a new config; out-of-range indexes change nothing.
+    // ---- Slot editing. Each returns a new config; out-of-range indexes change nothing.
+    // [layer] is an index into [layers]; adding to index layers.size starts a new outer layer.
 
-    val canAddSlice: Boolean get() = slices.size < MAX_SLICES
+    /** Whether an app can be added to [layer] (or, for layers.size, as a new outer layer). */
+    fun canAddSlot(layer: Int): Boolean = when {
+        layer in layers.indices -> layers[layer].slices.size < MAX_SLOTS_PER_LAYER
+        layer == layers.size -> layers.size < MAX_LAYERS
+        else -> false
+    }
 
-    /** Adds a slice for [primaryPackage] at the bottom of the pie, if there is room. */
-    fun withSliceAdded(primaryPackage: String): FanletConfig =
-        if (canAddSlice) copy(slices = slices + SliceConfig(primaryPackage)) else this
+    /** Adds [primaryPackage] at the end of [layer], or as a new outer layer if [layer] is layers.size. */
+    fun withSlotAdded(layer: Int, primaryPackage: String): FanletConfig {
+        if (!canAddSlot(layer)) return this
+        val slot = SliceConfig(primaryPackage)
+        return if (layer == layers.size) {
+            copy(layers = layers + PieLayer(listOf(slot)))
+        } else {
+            withLayer(layer) { it.copy(slices = it.slices + slot) }
+        }
+    }
 
-    fun withSliceRemoved(index: Int): FanletConfig =
-        if (index in slices.indices) copy(slices = slices.filterIndexed { i, _ -> i != index }) else this
+    /** Removes a slot. A layer that becomes empty is removed, so the next layer moves in. */
+    fun withSlotRemoved(layer: Int, index: Int): FanletConfig {
+        if (layer !in layers.indices || index !in layers[layer].slices.indices) return this
+        val updated = layers.mapIndexed { i, l ->
+            if (i == layer) l.copy(slices = l.slices.filterIndexed { j, _ -> j != index }) else l
+        }
+        return copy(layers = updated.filter { it.slices.isNotEmpty() })
+    }
 
-    /** Moves the slice at [from] so that it ends up at [to]. */
-    fun withSliceMoved(from: Int, to: Int): FanletConfig {
+    /** Moves the slot at [from] so that it ends up at [to], within [layer]. */
+    fun withSlotMoved(layer: Int, from: Int, to: Int): FanletConfig {
+        val slices = layers.getOrNull(layer)?.slices ?: return this
         if (from !in slices.indices || to !in slices.indices || from == to) return this
         val reordered = slices.toMutableList()
         reordered.add(to, reordered.removeAt(from))
-        return copy(slices = reordered)
+        return withLayer(layer) { it.copy(slices = reordered) }
     }
 
-    fun withSlicePrimary(index: Int, packageName: String): FanletConfig =
-        withSlice(index) { it.copy(primaryPackage = packageName) }
+    fun withSlotPrimary(layer: Int, index: Int, packageName: String): FanletConfig =
+        withSlot(layer, index) { it.copy(primaryPackage = packageName) }
 
-    /** Sets the slice's secondary app, or removes it when [packageName] is null. */
-    fun withSliceSecondary(index: Int, packageName: String?): FanletConfig =
-        withSlice(index) { it.copy(secondaryPackage = packageName) }
+    /** Sets the slot's secondary app, or removes it when [packageName] is null. */
+    fun withSlotSecondary(layer: Int, index: Int, packageName: String?): FanletConfig =
+        withSlot(layer, index) { it.copy(secondaryPackage = packageName) }
 
-    private fun withSlice(index: Int, transform: (SliceConfig) -> SliceConfig): FanletConfig =
-        if (index in slices.indices) {
-            copy(slices = slices.mapIndexed { i, slice -> if (i == index) transform(slice) else slice })
+    private fun withLayer(layer: Int, transform: (PieLayer) -> PieLayer): FanletConfig =
+        if (layer in layers.indices) {
+            copy(layers = layers.mapIndexed { i, l -> if (i == layer) transform(l) else l })
         } else {
             this
         }
 
-    companion object {
-        /** 1: a slice list per bar. 2: one slice list shared by all bars. */
-        const val CURRENT_SCHEMA_VERSION = 2
+    private fun withSlot(layer: Int, index: Int, transform: (SliceConfig) -> SliceConfig): FanletConfig {
+        val slices = layers.getOrNull(layer)?.slices ?: return this
+        if (index !in slices.indices) return this
+        return withLayer(layer) { l ->
+            l.copy(slices = l.slices.mapIndexed { j, slot -> if (j == index) transform(slot) else slot })
+        }
+    }
 
-        const val MAX_SLICES = 8
+    companion object {
+        /** 1: a slice list per bar. 2: one slice list shared by all bars. 3: layers of slots. */
+        const val CURRENT_SCHEMA_VERSION = 3
+
+        const val MAX_LAYERS = 5
+        const val MAX_SLOTS_PER_LAYER = 12
 
         val DEFAULT = FanletConfig()
 

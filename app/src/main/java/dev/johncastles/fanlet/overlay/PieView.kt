@@ -20,34 +20,35 @@ import dev.johncastles.fanlet.config.Edge
 import dev.johncastles.fanlet.geometry.PieGeometry
 import dev.johncastles.fanlet.geometry.PieLayout
 import dev.johncastles.fanlet.geometry.PixelPoint
-import kotlin.math.PI
-import kotlin.math.min
+import dev.johncastles.fanlet.geometry.SlotRef
 import kotlin.math.roundToInt
 
 /**
  * Draws the pie. Display only: it never receives touches (its window is not touchable).
- * The bar window that started the gesture feeds it the highlighted slice.
+ * The bar window that started the gesture feeds it the highlighted slot.
  *
  * The view fills the whole screen, so its coordinates are screen coordinates.
  */
 class PieView(context: Context) : View(context) {
 
-    /** What one slice shows: an app's label and icon (null while the icon is loading). */
+    /** What one slot shows: an app's label and icon (null while the icon is loading). */
     class Entry(val label: CharSequence, val icon: Drawable?)
 
     class Item(val primary: Entry, val secondary: Entry?)
 
     var pieLayout: PieLayout? = null
-    var items: List<Item> = emptyList()
+
+    /** One list per ring, innermost first, matching the layout's slot counts. */
+    var rings: List<List<Item>> = emptyList()
     var dimBackground: Boolean = true
 
-    /** Wanted size of a primary app icon; icons shrink when a slice is too small. */
-    var iconSizePx: Float = 40f * resources.displayMetrics.density
+    /** Main icon size as a fraction of the space a slot has (see [PieGeometry.iconSize]). */
+    var iconSizeFraction: Float = 0.7f
 
-    /** Size of a secondary app's icon relative to the primary icon in the same slice. */
+    /** Size of a secondary app's icon relative to the primary icon in the same slot. */
     var secondaryIconScale: Float = 0.6f
 
-    var highlightedSlice: Int? = null
+    var highlightedSlot: SlotRef? = null
         set(value) {
             field = value
             invalidate()
@@ -122,69 +123,82 @@ class PieView(context: Context) : View(context) {
         }
     }
 
+    private fun isHighlighted(layer: Int, index: Int): Boolean {
+        val slot = highlightedSlot ?: return false
+        return slot.layer == layer && slot.index == index
+    }
+
+    /** Every ring, each with its own slot division, separated by a thin gap. */
     private fun drawSlices(canvas: Canvas, pie: PieLayout, alpha: Int) {
         val c = pie.center
-        outerOval.set(c.x - pie.outerRadius, c.y - pie.outerRadius, c.x + pie.outerRadius, c.y + pie.outerRadius)
-        innerOval.set(c.x - pie.innerRadius, c.y - pie.innerRadius, c.x + pie.innerRadius, c.y + pie.innerRadius)
+        val ringGap = RING_GAP_DP * density
+        for (layer in 0 until pie.ringCount) {
+            val ring = pie.ring(layer)
+            val inner = if (layer == 0) ring.inner else ring.inner + ringGap / 2
+            val outer = if (layer == pie.ringCount - 1) ring.outer else ring.outer - ringGap / 2
+            outerOval.set(c.x - outer, c.y - outer, c.x + outer, c.y + outer)
+            innerOval.set(c.x - inner, c.y - inner, c.x + inner, c.y + inner)
 
-        val sweep = PieGeometry.sliceSweepDegrees(pie)
-        val gap = if (sweep > 0) SLICE_GAP_DEGREES else -SLICE_GAP_DEGREES
-        for (index in 0 until pie.sliceCount) {
-            val start = PieGeometry.sliceStartDegrees(pie, index) + gap / 2
-            val visibleSweep = sweep - gap
-            slicePath.reset()
-            slicePath.arcTo(outerOval, start, visibleSweep)
-            slicePath.arcTo(innerOval, start + visibleSweep, -visibleSweep)
-            slicePath.close()
+            val sweep = PieGeometry.slotSweepDegrees(pie, layer)
+            val gap = if (sweep > 0) SLICE_GAP_DEGREES else -SLICE_GAP_DEGREES
+            for (index in 0 until pie.slotCounts[layer]) {
+                val start = PieGeometry.slotStartDegrees(pie, SlotRef(layer, index)) + gap / 2
+                val visibleSweep = sweep - gap
+                slicePath.reset()
+                slicePath.arcTo(outerOval, start, visibleSweep)
+                slicePath.arcTo(innerOval, start + visibleSweep, -visibleSweep)
+                slicePath.close()
 
-            fillPaint.color = when {
-                index != highlightedSlice -> colors.slice
-                showingSecondary -> colors.secondaryHighlight
-                else -> colors.highlight
+                fillPaint.color = when {
+                    !isHighlighted(layer, index) -> colors.slice
+                    showingSecondary -> colors.secondaryHighlight
+                    else -> colors.highlight
+                }
+                fillPaint.alpha = (Color.alpha(fillPaint.color) * alpha) / 255
+                canvas.drawPath(slicePath, fillPaint)
             }
-            fillPaint.alpha = (Color.alpha(fillPaint.color) * alpha) / 255
-            canvas.drawPath(slicePath, fillPaint)
         }
     }
 
     /**
-     * One icon per slice, or two when the slice has a secondary app: the app a release
+     * One icon per slot, or two when the slot has a secondary app: the app a release
      * would launch large, the other one smaller, one behind the other from the centre
      * outward. A hold swaps which of the two is large.
      */
     private fun drawIcons(canvas: Canvas, pie: PieLayout, alpha: Int) {
-        val ringWidth = pie.outerRadius - pie.innerRadius
-        val midRadius = (pie.innerRadius + pie.outerRadius) / 2
-        val arcLength = (PI * midRadius / pie.sliceCount).toFloat()
-        val baseSize = min(iconSizePx, min(ringWidth * 0.7f, arcLength * 0.8f))
         val gap = ICON_GAP_DP * density
+        for ((layer, items) in rings.withIndex().take(pie.ringCount)) {
+            val ring = pie.ring(layer)
+            val baseSize = PieGeometry.iconSize(pie, layer, iconSizeFraction)
 
-        for ((index, item) in items.withIndex().take(pie.sliceCount)) {
-            val secondary = item.secondary
-            if (secondary == null) {
-                drawIcon(canvas, item.primary.icon, PieGeometry.slicePoint(pie, index, midRadius), baseSize, alpha)
-                continue
+            for ((index, item) in items.withIndex().take(pie.slotCounts[layer])) {
+                val slot = SlotRef(layer, index)
+                val secondary = item.secondary
+                if (secondary == null) {
+                    drawIcon(canvas, item.primary.icon, PieGeometry.slotPoint(pie, slot, ring.middle), baseSize, alpha)
+                    continue
+                }
+
+                val swapped = isHighlighted(layer, index) && showingSecondary
+                val large = if (swapped) secondary else item.primary
+                val small = if (swapped) item.primary else secondary
+
+                // Both icons and the gap between them must fit across the ring.
+                var largeSize = baseSize
+                var smallSize = baseSize * secondaryIconScale
+                val available = ring.depth * 0.95f - gap
+                if (largeSize + smallSize > available) {
+                    val shrink = available / (largeSize + smallSize)
+                    largeSize *= shrink
+                    smallSize *= shrink
+                }
+                val start = ring.middle - (largeSize + gap + smallSize) / 2
+                drawIcon(canvas, large.icon, PieGeometry.slotPoint(pie, slot, start + largeSize / 2), largeSize, alpha)
+                drawIcon(
+                    canvas, small.icon,
+                    PieGeometry.slotPoint(pie, slot, start + largeSize + gap + smallSize / 2), smallSize, alpha,
+                )
             }
-
-            val swapped = index == highlightedSlice && showingSecondary
-            val large = if (swapped) secondary else item.primary
-            val small = if (swapped) item.primary else secondary
-
-            // Both icons and the gap between them must fit across the ring.
-            var largeSize = baseSize
-            var smallSize = baseSize * secondaryIconScale
-            val available = ringWidth * 0.95f - gap
-            if (largeSize + smallSize > available) {
-                val shrink = available / (largeSize + smallSize)
-                largeSize *= shrink
-                smallSize *= shrink
-            }
-            val start = midRadius - (largeSize + gap + smallSize) / 2
-            drawIcon(canvas, large.icon, PieGeometry.slicePoint(pie, index, start + largeSize / 2), largeSize, alpha)
-            drawIcon(
-                canvas, small.icon,
-                PieGeometry.slicePoint(pie, index, start + largeSize + gap + smallSize / 2), smallSize, alpha,
-            )
         }
     }
 
@@ -207,8 +221,8 @@ class PieView(context: Context) : View(context) {
 
     /** The highlighted app's name, in a pill just beyond the pie's outer edge. */
     private fun drawLabel(canvas: Canvas, pie: PieLayout, alpha: Int) {
-        val index = highlightedSlice ?: return
-        val item = items.getOrNull(index) ?: return
+        val slot = highlightedSlot ?: return
+        val item = rings.getOrNull(slot.layer)?.getOrNull(slot.index) ?: return
         val entry = if (showingSecondary) item.secondary ?: item.primary else item.primary
         val text = entry.label.toString()
 
@@ -254,6 +268,7 @@ class PieView(context: Context) : View(context) {
         const val CLOSE_MS = 100L
 
         const val SLICE_GAP_DEGREES = 2f
+        const val RING_GAP_DP = 2f
         const val LABEL_TEXT_SP = 15f
         const val LABEL_PADDING_DP = 10f
         const val LABEL_GAP_DP = 12f

@@ -1,5 +1,6 @@
 package dev.johncastles.fanlet.overlay
 
+import dev.johncastles.fanlet.geometry.SlotRef
 import dev.johncastles.fanlet.overlay.PieSelection.Change
 import dev.johncastles.fanlet.overlay.PieSelection.Result
 import org.junit.Assert.assertEquals
@@ -10,8 +11,12 @@ import org.junit.Test
 
 class PieSelectionTest {
 
-    // Slice 1 has a secondary app; slices 0 and 2 do not.
-    private val selection = PieSelection(holdMs = 500) { slice -> slice == 1 }
+    private val plain = SlotRef(0, 0)
+    private val withSecondary = SlotRef(0, 1)
+    private val other = SlotRef(0, 2)
+    private val outerWithSecondary = SlotRef(1, 4)
+
+    private val selection = PieSelection(holdMs = 500) { it == withSecondary || it == outerWithSecondary }
 
     @Test
     fun startsWithNothingHighlighted() {
@@ -20,75 +25,88 @@ class PieSelectionTest {
     }
 
     @Test
-    fun enteringSlices_reportsEachChangeOnce() {
-        assertEquals(Change.Highlighted(0), selection.onPointer(0, nowMs = 0))
-        assertNull(selection.onPointer(0, nowMs = 10))
-        assertEquals(Change.Highlighted(2), selection.onPointer(2, nowMs = 20))
+    fun enteringSlots_reportsEachChangeOnce() {
+        assertEquals(Change.Highlighted(plain), selection.onPointer(plain, nowMs = 0))
+        assertNull(selection.onPointer(plain, nowMs = 10))
+        assertEquals(Change.Highlighted(other), selection.onPointer(other, nowMs = 20))
         assertEquals(Change.Highlighted(null), selection.onPointer(null, nowMs = 30))
         assertNull(selection.result())
     }
 
     @Test
+    fun sameIndexInAnotherLayer_isADifferentSlot() {
+        selection.onPointer(SlotRef(0, 4), nowMs = 0)
+        assertEquals(Change.Highlighted(SlotRef(1, 4)), selection.onPointer(SlotRef(1, 4), nowMs = 10))
+    }
+
+    @Test
     fun release_launchesHighlightedPrimary() {
-        selection.onPointer(2, nowMs = 0)
-        assertEquals(Result(slice = 2, secondary = false), selection.result())
+        selection.onPointer(other, nowMs = 0)
+        assertEquals(Result(other, secondary = false), selection.result())
     }
 
     @Test
     fun holding_switchesToSecondaryAfterHoldTime() {
-        selection.onPointer(1, nowMs = 1000)
+        selection.onPointer(withSecondary, nowMs = 1000)
         assertEquals(1500L, selection.holdDeadlineMs())
         assertNull(selection.checkHold(nowMs = 1499))
         assertFalse(selection.showingSecondary)
 
-        assertEquals(Change.SwitchedToSecondary(1), selection.checkHold(nowMs = 1500))
+        assertEquals(Change.SwitchedToSecondary(withSecondary), selection.checkHold(nowMs = 1500))
         assertTrue(selection.showingSecondary)
-        assertEquals(Result(slice = 1, secondary = true), selection.result())
+        assertEquals(Result(withSecondary, secondary = true), selection.result())
+    }
+
+    @Test
+    fun holding_worksInOuterLayers() {
+        selection.onPointer(outerWithSecondary, nowMs = 0)
+        assertEquals(Change.SwitchedToSecondary(outerWithSecondary), selection.checkHold(nowMs = 500))
+        assertEquals(Result(outerWithSecondary, secondary = true), selection.result())
     }
 
     @Test
     fun switchHappensOnlyOnce() {
-        selection.onPointer(1, nowMs = 0)
+        selection.onPointer(withSecondary, nowMs = 0)
         selection.checkHold(nowMs = 500)
         assertNull(selection.checkHold(nowMs = 2000))
         assertNull(selection.holdDeadlineMs())
     }
 
     @Test
-    fun movingWithinSlice_doesNotRestartHold() {
-        selection.onPointer(1, nowMs = 0)
-        selection.onPointer(1, nowMs = 300)
-        assertEquals(Change.SwitchedToSecondary(1), selection.onPointer(1, nowMs = 500))
+    fun movingWithinSlot_doesNotRestartHold() {
+        selection.onPointer(withSecondary, nowMs = 0)
+        selection.onPointer(withSecondary, nowMs = 300)
+        assertEquals(Change.SwitchedToSecondary(withSecondary), selection.onPointer(withSecondary, nowMs = 500))
     }
 
     @Test
-    fun leavingSlice_resetsToPrimary() {
-        selection.onPointer(1, nowMs = 0)
+    fun leavingSlot_resetsToPrimary() {
+        selection.onPointer(withSecondary, nowMs = 0)
         selection.checkHold(nowMs = 500)
-        selection.onPointer(2, nowMs = 600)
+        selection.onPointer(other, nowMs = 600)
         assertFalse(selection.showingSecondary)
 
         // Coming back starts a fresh hold.
-        selection.onPointer(1, nowMs = 700)
+        selection.onPointer(withSecondary, nowMs = 700)
         assertFalse(selection.showingSecondary)
-        assertEquals(Result(slice = 1, secondary = false), selection.result())
+        assertEquals(Result(withSecondary, secondary = false), selection.result())
         assertNull(selection.checkHold(nowMs = 1199))
-        assertEquals(Change.SwitchedToSecondary(1), selection.checkHold(nowMs = 1200))
+        assertEquals(Change.SwitchedToSecondary(withSecondary), selection.checkHold(nowMs = 1200))
     }
 
     @Test
     fun leavingBeforeHoldTime_preventsSwitch() {
-        selection.onPointer(1, nowMs = 0)
+        selection.onPointer(withSecondary, nowMs = 0)
         selection.onPointer(null, nowMs = 400)
         assertNull(selection.checkHold(nowMs = 600))
         assertNull(selection.result())
     }
 
     @Test
-    fun sliceWithoutSecondary_neverSwitches() {
-        selection.onPointer(0, nowMs = 0)
+    fun slotWithoutSecondary_neverSwitches() {
+        selection.onPointer(plain, nowMs = 0)
         assertNull(selection.holdDeadlineMs())
         assertNull(selection.checkHold(nowMs = 10_000))
-        assertEquals(Result(slice = 0, secondary = false), selection.result())
+        assertEquals(Result(plain, secondary = false), selection.result())
     }
 }

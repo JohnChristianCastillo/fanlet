@@ -49,10 +49,10 @@ sealed interface Screen {
     @SerialName("bar")
     data class Bar(val barId: String) : Screen
 
-    /** Choosing an app for the pie; [sliceIndex] null means a new slice. */
+    /** Choosing an app for a slot of [layer]; [slotIndex] null means a new slot. */
     @Serializable
     @SerialName("pick")
-    data class PickApp(val sliceIndex: Int?, val secondary: Boolean) : Screen
+    data class PickApp(val layer: Int, val slotIndex: Int?, val secondary: Boolean) : Screen
 }
 
 /** Keeps the current screen across rotation and process death. */
@@ -93,7 +93,7 @@ fun FanletApp(
         Screen.Apps -> AppsScreen(
             config = config,
             updateConfig = updateConfig,
-            onPickApp = { target -> screen = Screen.PickApp(target.sliceIndex, target.secondary) },
+            onPickApp = { target -> screen = Screen.PickApp(target.layer, target.slotIndex, target.secondary) },
             onBack = { screen = Screen.Home },
         )
 
@@ -133,9 +133,9 @@ fun FanletApp(
 /** Puts the picked app where [target] says: a new slice, or a slice's main or second app. */
 private fun applyPick(config: FanletConfig, target: Screen.PickApp, packageName: String): FanletConfig =
     when {
-        target.sliceIndex == null -> config.withSliceAdded(packageName)
-        target.secondary -> config.withSliceSecondary(target.sliceIndex, packageName)
-        else -> config.withSlicePrimary(target.sliceIndex, packageName)
+        target.slotIndex == null -> config.withSlotAdded(target.layer, packageName)
+        target.secondary -> config.withSlotSecondary(target.layer, target.slotIndex, packageName)
+        else -> config.withSlotPrimary(target.layer, target.slotIndex, packageName)
     }
 
 /** The home screen plus export and import through the system file picker. */

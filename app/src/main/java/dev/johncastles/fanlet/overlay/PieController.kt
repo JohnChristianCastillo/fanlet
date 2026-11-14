@@ -14,7 +14,7 @@ import dev.johncastles.fanlet.R
 import dev.johncastles.fanlet.apps.AppInfoCache
 import dev.johncastles.fanlet.config.BarConfig
 import dev.johncastles.fanlet.config.PieAppearance
-import dev.johncastles.fanlet.config.SliceConfig
+import dev.johncastles.fanlet.config.PieLayer
 import dev.johncastles.fanlet.geometry.PieGeometry
 import dev.johncastles.fanlet.geometry.PieLayout
 import dev.johncastles.fanlet.geometry.ScreenInfo
@@ -39,7 +39,7 @@ class PieController(
 
     private class Session(
         val layout: PieLayout,
-        val slices: List<SliceConfig>,
+        val layers: List<PieLayer>,
         val selection: PieSelection,
         val hapticsEnabled: Boolean,
         val view: PieView,
@@ -61,13 +61,13 @@ class PieController(
 
     /**
      * Starts a gesture: a finger went down on [bar] at screen position ([x], [y]).
-     * Does nothing if [slices] is empty.
+     * Does nothing if there are no [layers] (the config keeps only layers with apps).
      *
      * @param timeMs event time on the [SystemClock.uptimeMillis] clock.
      */
     fun start(
         bar: BarConfig,
-        slices: List<SliceConfig>,
+        layers: List<PieLayer>,
         appearance: PieAppearance,
         screen: ScreenInfo,
         x: Float,
@@ -75,27 +75,29 @@ class PieController(
         timeMs: Long,
     ) {
         dismiss()
-        if (slices.isEmpty()) return
+        if (layers.isEmpty() || layers.any { it.slices.isEmpty() }) return
 
         val outerRadius = PieGeometry.outerRadius(screen, appearance.sizeFraction)
         val layout = PieGeometry.layout(
             screen = screen,
             edge = bar.edge,
             touchY = y,
-            innerRadius = PieGeometry.innerRadius(screen, bar.thicknessDp, outerRadius),
+            cancelRadius = PieGeometry.cancelRadius(screen, bar.thicknessDp, outerRadius),
             outerRadius = outerRadius,
-            sliceCount = slices.size,
+            slotCounts = layers.map { it.slices.size },
         )
         val view = PieView(context).apply {
             pieLayout = layout
-            iconSizePx = appearance.iconSizeDp * screen.density
+            iconSizeFraction = appearance.iconSizeFraction
             secondaryIconScale = appearance.secondaryIconScale
             dimBackground = appearance.dimBackground
-            items = slices.map { slice ->
-                PieView.Item(
-                    primary = entryFor(slice.primaryPackage),
-                    secondary = slice.secondaryPackage?.let(::entryFor),
-                )
+            rings = layers.map { layer ->
+                layer.slices.map { slot ->
+                    PieView.Item(
+                        primary = entryFor(slot.primaryPackage),
+                        secondary = slot.secondaryPackage?.let(::entryFor),
+                    )
+                }
             }
         }
         try {
@@ -112,8 +114,10 @@ class PieController(
 
         session = Session(
             layout = layout,
-            slices = slices,
-            selection = PieSelection(appearance.holdMs.toLong()) { index -> slices[index].secondaryPackage != null },
+            layers = layers,
+            selection = PieSelection(appearance.holdMs.toLong()) { slot ->
+                layers[slot.layer].slices[slot.index].secondaryPackage != null
+            },
             hapticsEnabled = bar.hapticsEnabled,
             view = view,
         )
@@ -123,8 +127,8 @@ class PieController(
     /** The finger moved to screen position ([x], [y]). */
     fun move(x: Float, y: Float, timeMs: Long) {
         val current = session ?: return
-        val slice = PieGeometry.sliceAt(current.layout, x, y)
-        apply(current, current.selection.onPointer(slice, timeMs))
+        val slot = PieGeometry.slotAt(current.layout, x, y)
+        apply(current, current.selection.onPointer(slot, timeMs))
         scheduleHoldCheck(current)
     }
 
@@ -135,8 +139,8 @@ class PieController(
         val result = current.selection.result()
         close()
         if (result != null) {
-            val slice = current.slices[result.slice]
-            val packageName = if (result.secondary) slice.secondaryPackage else slice.primaryPackage
+            val slot = current.layers[result.slot.layer].slices[result.slot.index]
+            val packageName = if (result.secondary) slot.secondaryPackage else slot.primaryPackage
             packageName?.let(launchApp)
         }
     }
@@ -158,8 +162,8 @@ class PieController(
             null -> Unit
             is PieSelection.Change.Highlighted -> {
                 current.view.showingSecondary = false
-                current.view.highlightedSlice = change.slice
-                if (change.slice != null && current.hapticsEnabled) haptics.sliceChanged()
+                current.view.highlightedSlot = change.slot
+                if (change.slot != null && current.hapticsEnabled) haptics.sliceChanged()
             }
             is PieSelection.Change.SwitchedToSecondary -> {
                 current.view.showingSecondary = true

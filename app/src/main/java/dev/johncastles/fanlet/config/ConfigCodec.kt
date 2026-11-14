@@ -75,6 +75,7 @@ object ConfigCodec {
     private fun migrate(obj: JsonObject, version: Int): JsonObject {
         var current = obj
         if (version < 2) current = migrateV1ToV2(current)
+        if (version < 3) current = migrateV2ToV3(current)
         return current
     }
 
@@ -89,5 +90,19 @@ object ConfigCodec {
             ?.firstOrNull { it.isNotEmpty() }
             ?: JsonArray(emptyList())
         return JsonObject(obj + ("slices" to sharedSlices) + ("schemaVersion" to JsonPrimitive(2)))
+    }
+
+    /**
+     * Version 2 had one slice list; version 3 has layers. The list becomes layer 1 (no
+     * layers if it was empty). The old `slices` key stays and is ignored.
+     */
+    private fun migrateV2ToV3(obj: JsonObject): JsonObject {
+        val slices = obj["slices"] as? JsonArray
+        val layers = if (slices.isNullOrEmpty()) {
+            JsonArray(emptyList())
+        } else {
+            JsonArray(listOf(JsonObject(mapOf("slices" to slices))))
+        }
+        return JsonObject(obj + ("layers" to layers) + ("schemaVersion" to JsonPrimitive(3)))
     }
 }

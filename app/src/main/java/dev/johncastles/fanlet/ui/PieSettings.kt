@@ -57,11 +57,12 @@ fun PieSettingsCard(appearance: PieAppearance, onAppearanceChanged: (PieAppearan
 
             LabeledSlider(
                 label = stringResource(R.string.icon_size),
-                valueText = stringResource(R.string.value_dp, appearance.iconSizeDp),
-                value = appearance.iconSizeDp.toFloat(),
-                range = PieAppearance.MIN_ICON_SIZE_DP.toFloat()..PieAppearance.MAX_ICON_SIZE_DP.toFloat(),
-                onValueChange = { onAppearanceChanged(appearance.copy(iconSizeDp = it.roundToInt())) },
+                valueText = stringResource(R.string.value_percent, (appearance.iconSizeFraction * 100).roundToInt()),
+                value = appearance.iconSizeFraction,
+                range = PieAppearance.MIN_ICON_SIZE_FRACTION..PieAppearance.MAX_ICON_SIZE_FRACTION,
+                onValueChange = { onAppearanceChanged(appearance.copy(iconSizeFraction = it.roundToHundredths())) },
             )
+            Text(text = stringResource(R.string.icon_size_description), style = MaterialTheme.typography.bodyMedium)
 
             LabeledSlider(
                 label = stringResource(R.string.secondary_icon_size),
@@ -76,7 +77,7 @@ fun PieSettingsCard(appearance: PieAppearance, onAppearanceChanged: (PieAppearan
             )
 
             IconSizePreview(
-                primarySize = appearance.iconSizeDp.dp,
+                iconSizeFraction = appearance.iconSizeFraction,
                 secondaryScale = appearance.secondaryIconScale,
             )
 
@@ -100,17 +101,18 @@ fun PieSettingsCard(appearance: PieAppearance, onAppearanceChanged: (PieAppearan
 }
 
 /**
- * Two real app icons side by side at the sizes the pie will use, unless a slice is too
- * small for them (then the pie shrinks them).
+ * Two real app icons side by side in a sample slot, sized like in the pie: the main icon
+ * fills [iconSizeFraction] of the slot, the second icon is [secondaryScale] of that. Real
+ * slots differ per ring; the proportions are what this shows.
  */
 @Composable
-private fun IconSizePreview(primarySize: Dp, secondaryScale: Float) {
-    val maxSize = PieAppearance.MAX_ICON_SIZE_DP.dp
-    val icons = rememberExampleIcons(count = 2, size = maxSize)
+private fun IconSizePreview(iconSizeFraction: Float, secondaryScale: Float) {
+    val primarySize = PREVIEW_SLOT_SIZE * iconSizeFraction
+    val icons = rememberExampleIcons(count = 2, size = PREVIEW_SLOT_SIZE)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(primarySize + 24.dp)
+            .height(PREVIEW_SLOT_SIZE + 16.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center,
     ) {
@@ -123,6 +125,9 @@ private fun IconSizePreview(primarySize: Dp, secondaryScale: Float) {
         }
     }
 }
+
+/** Size of the sample slot in the preview. */
+private val PREVIEW_SLOT_SIZE = 64.dp
 
 /** Keeps stored fractions tidy (0.35 rather than 0.34871). */
 private fun Float.roundToHundredths(): Float = (this * 100).roundToInt() / 100f

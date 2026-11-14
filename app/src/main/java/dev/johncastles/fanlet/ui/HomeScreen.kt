@@ -107,10 +107,10 @@ fun HomeScreen(
             SettingsGroup(title = stringResource(R.string.section_pie)) {
                 NavigationItem(
                     title = stringResource(R.string.apps_title),
-                    summary = if (config.slices.isEmpty()) {
+                    summary = if (config.slotCount == 0) {
                         stringResource(R.string.apps_none)
                     } else {
-                        pluralStringResource(R.plurals.app_count, config.slices.size, config.slices.size)
+                        pluralStringResource(R.plurals.app_count, config.slotCount, config.slotCount)
                     },
                     onClick = onOpenApps,
                 )
@@ -189,7 +189,7 @@ private fun HomeScreenPreview() {
                 notificationsDenied = false,
                 serviceRunning = true,
                 servicePaused = false,
-                config = FanletConfig.DEFAULT.withSliceAdded("org.example.mail"),
+                config = FanletConfig.DEFAULT.withSlotAdded(0, "org.example.mail"),
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onOpenOverlaySettings = {},
