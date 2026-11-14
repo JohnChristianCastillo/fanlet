@@ -22,7 +22,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import dev.johncastles.fanlet.R
+import dev.johncastles.fanlet.config.BarConfig
 import dev.johncastles.fanlet.config.ConfigCodec
+import dev.johncastles.fanlet.config.Edge
 import dev.johncastles.fanlet.config.ConfigTransfer
 import dev.johncastles.fanlet.config.FanletConfig
 import kotlinx.coroutines.launch
@@ -105,6 +107,9 @@ fun FanletApp(
 
         Screen.Appearance -> AppearanceScreen(
             appearance = config.pie,
+            layers = config.layers,
+            barThicknessDp = config.bars.firstOrNull { it.edge == Edge.RIGHT }?.thicknessDp
+                ?: BarConfig.DEFAULT_THICKNESS_DP,
             onAppearanceChanged = { pie -> updateConfig { it.copy(pie = pie) } },
             onBack = { screen = Screen.Home },
         )
@@ -127,6 +132,10 @@ fun FanletApp(
 
         is Screen.PickApp -> AppPickerScreen(
             title = stringResource(if (current.secondary) R.string.picker_title_secondary else R.string.picker_title),
+            // Apps already in the pie, as main or second app in any layer, are not offered again.
+            excludedPackages = remember(config.layers) {
+                config.layers.flatMap { it.slices }.flatMap { listOfNotNull(it.primaryPackage, it.secondaryPackage) }.toSet()
+            },
             onPicked = { packageName ->
                 updateConfig { cfg -> applyPick(cfg, current, packageName) }
                 screen = Screen.Apps(current.layer)

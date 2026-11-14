@@ -205,7 +205,7 @@ class PieController(
             return PieView.Entry(label = context.getString(R.string.app_not_installed), icon = null)
         }
         val info = appInfo.get(packageName)
-        return PieView.Entry(label = info?.label ?: packageName, icon = info?.icon)
+        return PieView.Entry(label = info?.label ?: packageName, icon = info?.iconCopy(context.resources))
     }
 
     @SuppressLint("RtlHardcoded") // Absolute screen position, not layout-direction relative.

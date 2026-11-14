@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.Dp
 import androidx.core.graphics.drawable.toBitmap
 import dev.johncastles.fanlet.appInfoCache
@@ -58,9 +59,11 @@ fun appLabel(lookup: AppLookup, packageName: String): String = when (lookup) {
 @Composable
 fun AppIcon(lookup: AppLookup, size: Dp, modifier: Modifier = Modifier) {
     val sizePx = with(LocalDensity.current) { size.roundToPx() }
-    // Drawables are not thread-safe, so the bitmap is made here, on the main thread.
+    val resources = LocalResources.current
+    // Drawables are not thread-safe, so the bitmap is made here, on the main thread, from
+    // a private copy (the pie changes its own copies' alpha while animating).
     val bitmap = remember(lookup, sizePx) {
-        (lookup as? AppLookup.Found)?.info?.icon?.toBitmap(sizePx, sizePx)?.asImageBitmap()
+        (lookup as? AppLookup.Found)?.info?.iconCopy(resources)?.toBitmap(sizePx, sizePx)?.asImageBitmap()
     }
     if (bitmap != null) {
         Image(bitmap = bitmap, contentDescription = null, modifier = modifier.size(size))

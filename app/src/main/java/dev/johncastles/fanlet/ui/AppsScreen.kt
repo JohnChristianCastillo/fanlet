@@ -3,6 +3,12 @@ package dev.johncastles.fanlet.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.foundation.layout.Row
@@ -67,15 +73,29 @@ fun AppsScreen(
     // Removing a layer's last app can remove the open tab; fall back to the nearest one.
     val layer = selectedLayer.coerceIn(0, tabCount - 1)
 
+    // Swiping between layers: the pager and the selected tab follow each other.
+    val pagerState = rememberPagerState(initialPage = layer) { tabCount }
+    val currentLayer by rememberUpdatedState(layer)
+    val currentOnSelectLayer by rememberUpdatedState(onSelectLayer)
+    LaunchedEffect(layer) {
+        if (pagerState.currentPage != layer) pagerState.animateScrollToPage(layer)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            if (page != currentLayer) currentOnSelectLayer(page)
+        }
+    }
+    val shownTab = pagerState.currentPage.coerceIn(0, tabCount - 1)
+
     Scaffold(
         topBar = {
             Column {
                 TopAppBar(title = { Text(stringResource(R.string.apps_title)) }, navigationIcon = { BackButton(onBack) })
-                PrimaryScrollableTabRow(selectedTabIndex = layer, edgePadding = 16.dp) {
+                PrimaryScrollableTabRow(selectedTabIndex = shownTab, edgePadding = 16.dp) {
                     for (tab in 0 until tabCount) {
                         val isNew = tab == layerCount
                         Tab(
-                            selected = tab == layer,
+                            selected = tab == shownTab,
                             onClick = { onSelectLayer(tab) },
                             text = {
                                 Text(
@@ -91,48 +111,72 @@ fun AppsScreen(
             }
         },
     ) { innerPadding ->
-        Column(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val slots = config.layers.getOrNull(layer)?.slices.orEmpty()
+                .fillMaxSize(),
+            verticalAlignment = Alignment.Top,
+        ) { page ->
+            LayerPage(
+                config = config,
+                layer = page,
+                updateConfig = updateConfig,
+                onPickApp = onPickApp,
+            )
+        }
+    }
+}
+
+/** One layer's slots (or the empty "new layer" page), with the controls to edit them. */
+@Composable
+private fun LayerPage(
+    config: FanletConfig,
+    layer: Int,
+    updateConfig: ((FanletConfig) -> FanletConfig) -> Unit,
+    onPickApp: (AppPickTarget) -> Unit,
+) {
+    val layerCount = config.layers.size
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val slots = config.layers.getOrNull(layer)?.slices.orEmpty()
+        Text(
+            text = when {
+                layerCount == 0 -> stringResource(R.string.apps_empty_hint)
+                layer == layerCount -> stringResource(R.string.layer_new_hint, layer + 1)
+                else -> stringResource(R.string.apps_description)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        slots.forEachIndexed { index, slot ->
+            SliceCard(
+                slice = slot,
+                canMoveUp = index > 0,
+                canMoveDown = index < slots.lastIndex,
+                onChangePrimary = { onPickApp(AppPickTarget(layer, index, secondary = false)) },
+                onChooseSecondary = { onPickApp(AppPickTarget(layer, index, secondary = true)) },
+                onRemoveSecondary = { updateConfig { it.withSlotSecondary(layer, index, null) } },
+                onMoveUp = { updateConfig { it.withSlotMoved(layer, index, index - 1) } },
+                onMoveDown = { updateConfig { it.withSlotMoved(layer, index, index + 1) } },
+                onRemove = { updateConfig { it.withSlotRemoved(layer, index) } },
+            )
+        }
+        if (config.canAddSlot(layer)) {
+            Button(onClick = { onPickApp(AppPickTarget(layer, slotIndex = null, secondary = false)) }) {
+                Text(stringResource(R.string.action_add_app))
+            }
+        } else {
             Text(
-                text = when {
-                    layerCount == 0 -> stringResource(R.string.apps_empty_hint)
-                    layer == layerCount -> stringResource(R.string.layer_new_hint, layer + 1)
-                    else -> stringResource(R.string.apps_description)
-                },
+                text = pluralStringResource(
+                    R.plurals.slices_full, FanletConfig.MAX_SLOTS_PER_LAYER, FanletConfig.MAX_SLOTS_PER_LAYER,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            slots.forEachIndexed { index, slot ->
-                SliceCard(
-                    slice = slot,
-                    canMoveUp = index > 0,
-                    canMoveDown = index < slots.lastIndex,
-                    onChangePrimary = { onPickApp(AppPickTarget(layer, index, secondary = false)) },
-                    onChooseSecondary = { onPickApp(AppPickTarget(layer, index, secondary = true)) },
-                    onRemoveSecondary = { updateConfig { it.withSlotSecondary(layer, index, null) } },
-                    onMoveUp = { updateConfig { it.withSlotMoved(layer, index, index - 1) } },
-                    onMoveDown = { updateConfig { it.withSlotMoved(layer, index, index + 1) } },
-                    onRemove = { updateConfig { it.withSlotRemoved(layer, index) } },
-                )
-            }
-            if (config.canAddSlot(layer)) {
-                Button(onClick = { onPickApp(AppPickTarget(layer, slotIndex = null, secondary = false)) }) {
-                    Text(stringResource(R.string.action_add_app))
-                }
-            } else {
-                Text(
-                    text = pluralStringResource(
-                        R.plurals.slices_full, FanletConfig.MAX_SLOTS_PER_LAYER, FanletConfig.MAX_SLOTS_PER_LAYER,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
         }
     }
 }

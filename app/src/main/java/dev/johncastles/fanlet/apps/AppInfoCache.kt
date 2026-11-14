@@ -1,6 +1,7 @@
 package dev.johncastles.fanlet.apps
 
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.graphics.drawable.Drawable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,7 +14,16 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /** Label and icon of an app's launcher entry. */
-class AppInfo(val label: CharSequence, val icon: Drawable)
+class AppInfo(val label: CharSequence, val icon: Drawable) {
+
+    /**
+     * A private copy of [icon] to draw with. Drawing changes a Drawable's bounds and
+     * alpha, so every user (the pie, each settings row) needs its own copy; drawing the
+     * shared one is how a fading pie once left icons invisible in the settings.
+     */
+    fun iconCopy(resources: Resources): Drawable =
+        icon.constantState?.newDrawable(resources)?.mutate() ?: icon
+}
 
 /**
  * Loads app labels and icons on a background thread and keeps them, so the pie can open
@@ -24,6 +34,7 @@ class AppInfo(val label: CharSequence, val icon: Drawable)
  * remembered as missing, so the pie and the editor can mark it.
  *
  * Icons are drawn and converted on the main thread only: Drawables are not thread-safe.
+ * Never draw [AppInfo.icon] directly; draw [AppInfo.iconCopy].
  *
  * @param ioScope scope for loading; should use a background dispatcher.
  */

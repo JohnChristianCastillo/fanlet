@@ -78,6 +78,13 @@ class PieView(context: Context) : View(context) {
 
     fun animateOpen() = animateTo(target = 1f, durationMs = OPEN_MS, onEnd = null)
 
+    /** Shows the pie fully open at once, without animation (used by the settings preview). */
+    fun showOpen() {
+        stopAnimation()
+        progress = 1f
+        invalidate()
+    }
+
     /** Animates closed, then calls [onEnd] (for example to remove the window). */
     fun animateClose(onEnd: () -> Unit) = animateTo(target = 0f, durationMs = CLOSE_MS, onEnd = onEnd)
 
