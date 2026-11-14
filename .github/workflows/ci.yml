@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Gradle itself only needs JDK 17+, but the build's daemon JVM is pinned to
+      # JDK 25 in gradle/gradle-daemon-jvm.properties. Installing 25 here avoids a
+      # toolchain download on every run.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      # Caches Gradle dependencies and validates the Gradle wrapper checksum.
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Lint, unit tests, permission check and debug build
+        run: ./gradlew lint testDebugUnitTest check assembleDebug

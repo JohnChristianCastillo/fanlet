@@ -1,0 +1,11 @@
+# Store text files with LF line endings in the repository.
+* text=auto
+
+# Shell scripts must keep LF, Windows batch files CRLF, on every checkout.
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+
+*.jar binary
+*.png binary
+*.webp binary
