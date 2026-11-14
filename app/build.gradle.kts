@@ -63,6 +63,8 @@ dependencies {
 val permissionAllowlist = listOf(
     "android.permission.SYSTEM_ALERT_WINDOW",
     "android.permission.FOREGROUND_SERVICE",
+    // Type permission for the overlay service (android:foregroundServiceType="specialUse").
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.VIBRATE",
 )

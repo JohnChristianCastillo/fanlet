@@ -2,6 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Every permission here must also be on the allowlist in app/build.gradle.kts
+         and in the README's Privacy table. -->
+
+    <!-- Draw the edge bars on top of other apps ("Appear on top" on Samsung). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Keep the overlay service running while other apps are in use. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- The "Fanlet is active" notification (Android 13+; optional). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Haptic feedback when a bar is touched. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -21,6 +34,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".overlay.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="29">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps user-enabled edge bars (TYPE_APPLICATION_OVERLAY windows) on screen while other apps are in use. Touching a bar opens a menu of app shortcuts. The service runs only after the user turns it on in the app and can be stopped from its notification. No other foreground service type covers an always-available overlay launcher." />
+        </service>
     </application>
 
 </manifest>

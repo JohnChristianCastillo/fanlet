@@ -33,11 +33,11 @@ Every permission in the app's final manifest is listed here.
 
 | Permission | Why |
 |---|---|
+| `SYSTEM_ALERT_WINDOW` ("Display over other apps", called "Appear on top" on Samsung phones) | Draws the edge bars on top of other apps. You grant it in the system settings. It lets Fanlet show its own windows and receive touches on them only; it cannot see or read what other apps display. |
+| `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_SPECIAL_USE` | Keep the edge bars running while you use other apps. Android shows a "Fanlet is active" notification for as long as they run, with a Stop button. "Special use" is the service type Android provides for cases like an always-available overlay that none of the other types (location, media, camera and so on) cover. |
+| `POST_NOTIFICATIONS` | Shows that notification on Android 13 and newer. Optional: Fanlet works without it. |
+| `VIBRATE` | A short vibration when you touch an edge bar. |
 | `dev.johncastles.fanlet.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Added automatically by the AndroidX Core library. It is private to Fanlet and only protects Fanlet's own internal broadcast receivers on older Android versions. It grants no access to anything outside the app. |
-
-Upcoming features will add the "Display over other apps" permission (called "Appear
-on top" on Samsung phones), a foreground service with its notification, and
-vibration. Each one is listed here when it is added.
 
 ### How this is enforced
 

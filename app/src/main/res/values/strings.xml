@@ -1,4 +1,27 @@
 <resources>
     <string name="app_name">Fanlet</string>
-    <string name="placeholder_message">Edge bars and settings are not available yet.</string>
+
+    <!-- Setup screen -->
+    <string name="status_allowed">Allowed</string>
+    <string name="status_not_allowed">Not allowed</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_allow">Allow</string>
+
+    <string name="overlay_permission_title">Display over other apps</string>
+    <string name="overlay_permission_description">Needed to show the edge bars on top of other apps. On Samsung phones this setting is called “Appear on top”.</string>
+
+    <string name="notification_permission_title">Notifications</string>
+    <string name="notification_permission_description">Used only for the “Fanlet is active” notification while the edge bars are on. Fanlet works without it.</string>
+    <string name="notification_permission_denied">Notifications are off. You can turn them on in Fanlet’s notification settings.</string>
+
+    <string name="service_title">Edge bars</string>
+    <string name="service_description">Shows a test bar on the right edge of the screen. Touch it to feel a short vibration.</string>
+    <string name="service_needs_overlay">Allow “Display over other apps” first.</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_channel_name">Edge bars status</string>
+    <string name="notification_channel_description">Shown while the edge bars are on.</string>
+    <string name="notification_title">Fanlet is active</string>
+    <string name="notification_text">Edge bars are on</string>
+    <string name="notification_action_stop">Stop</string>
 </resources>
