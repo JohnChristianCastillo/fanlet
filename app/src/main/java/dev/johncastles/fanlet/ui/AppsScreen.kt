@@ -3,6 +3,8 @@ package dev.johncastles.fanlet.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,20 +45,50 @@ import dev.johncastles.fanlet.ui.theme.FanletTheme
 data class AppPickTarget(val layer: Int, val slotIndex: Int?, val secondary: Boolean)
 
 /**
- * The pie's apps, shared by both bars, top slot first. Edits the innermost layer only;
- * tabs for the other layers come in a later milestone.
+ * The pie's apps, shared by both bars: a tab per layer (layer 1 is the inner ring), plus
+ * a tab to start the next layer while there are fewer than the maximum. Each tab lists
+ * that layer's slots, top slot first.
+ *
+ * @param selectedLayer the open tab; may point at the "new layer" tab (index layers.size).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppsScreen(
     config: FanletConfig,
+    selectedLayer: Int,
+    onSelectLayer: (Int) -> Unit,
     updateConfig: ((FanletConfig) -> FanletConfig) -> Unit,
     onPickApp: (AppPickTarget) -> Unit,
     onBack: () -> Unit,
 ) {
+    val layerCount = config.layers.size
+    val showNewLayerTab = layerCount < FanletConfig.MAX_LAYERS
+    val tabCount = layerCount + if (showNewLayerTab) 1 else 0
+    // Removing a layer's last app can remove the open tab; fall back to the nearest one.
+    val layer = selectedLayer.coerceIn(0, tabCount - 1)
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.apps_title)) }, navigationIcon = { BackButton(onBack) })
+            Column {
+                TopAppBar(title = { Text(stringResource(R.string.apps_title)) }, navigationIcon = { BackButton(onBack) })
+                PrimaryScrollableTabRow(selectedTabIndex = layer, edgePadding = 16.dp) {
+                    for (tab in 0 until tabCount) {
+                        val isNew = tab == layerCount
+                        Tab(
+                            selected = tab == layer,
+                            onClick = { onSelectLayer(tab) },
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (isNew) R.string.layer_tab_new else R.string.layer_tab,
+                                        tab + 1,
+                                    )
+                                )
+                            },
+                        )
+                    }
+                }
+            }
         },
     ) { innerPadding ->
         Column(
@@ -67,10 +99,13 @@ fun AppsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val layer = 0
             val slots = config.layers.getOrNull(layer)?.slices.orEmpty()
             Text(
-                text = stringResource(if (slots.isEmpty()) R.string.apps_empty_hint else R.string.apps_description),
+                text = when {
+                    layerCount == 0 -> stringResource(R.string.apps_empty_hint)
+                    layer == layerCount -> stringResource(R.string.layer_new_hint, layer + 1)
+                    else -> stringResource(R.string.apps_description)
+                },
                 style = MaterialTheme.typography.bodyMedium,
             )
             slots.forEachIndexed { index, slot ->
@@ -201,7 +236,10 @@ private fun AppsScreenPreview() {
             config = FanletConfig.DEFAULT
                 .withSlotAdded(0, "org.example.mail")
                 .withSlotAdded(0, "org.example.maps")
-                .withSlotSecondary(0, 0, "org.example.chat"),
+                .withSlotSecondary(0, 0, "org.example.chat")
+                .withSlotAdded(1, "org.example.camera"),
+            selectedLayer = 0,
+            onSelectLayer = {},
             updateConfig = {},
             onPickApp = {},
             onBack = {},

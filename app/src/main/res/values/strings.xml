@@ -33,11 +33,19 @@
         <item quantity="one">%1$d app</item>
         <item quantity="other">%1$d apps</item>
     </plurals>
-    <string name="apps_description">Both bars open this pie. The first app is the top slice; tap an app to change it.</string>
+    <plurals name="layer_count">
+        <item quantity="one">%1$d layer</item>
+        <item quantity="other">%1$d layers</item>
+    </plurals>
+    <string name="apps_summary_layers">%1$s, %2$s</string>
+    <string name="apps_description">Both bars open this pie. Each layer is a ring, layer 1 innermost; a layer’s first app is its top slot. Tap an app to change it.</string>
     <string name="apps_empty_hint">No apps yet, so touching a bar only vibrates. Add apps to fill the pie; both bars open the same pie.</string>
+    <string name="layer_tab">Layer %1$d</string>
+    <string name="layer_tab_new">+ Layer %1$d</string>
+    <string name="layer_new_hint">Add an app to start layer %1$d, a ring around the layers before it.</string>
     <plurals name="slices_full">
-        <item quantity="one">A pie holds up to %1$d app.</item>
-        <item quantity="other">A pie holds up to %1$d apps.</item>
+        <item quantity="one">A layer holds up to %1$d app.</item>
+        <item quantity="other">A layer holds up to %1$d apps.</item>
     </plurals>
     <string name="action_add_app">Add app</string>
     <string name="action_change_app">Change app</string>

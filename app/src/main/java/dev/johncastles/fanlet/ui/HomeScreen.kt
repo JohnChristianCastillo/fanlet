@@ -107,11 +107,7 @@ fun HomeScreen(
             SettingsGroup(title = stringResource(R.string.section_pie)) {
                 NavigationItem(
                     title = stringResource(R.string.apps_title),
-                    summary = if (config.slotCount == 0) {
-                        stringResource(R.string.apps_none)
-                    } else {
-                        pluralStringResource(R.plurals.app_count, config.slotCount, config.slotCount)
-                    },
+                    summary = appsSummary(config),
                     onClick = onOpenApps,
                 )
                 NavigationItem(
@@ -157,6 +153,17 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/** "No apps yet", "5 apps" or, with several layers, "2 layers, 12 apps". */
+@Composable
+private fun appsSummary(config: FanletConfig): String {
+    val apps = config.slotCount
+    if (apps == 0) return stringResource(R.string.apps_none)
+    val appText = pluralStringResource(R.plurals.app_count, apps, apps)
+    val layers = config.layers.size
+    if (layers <= 1) return appText
+    return stringResource(R.string.apps_summary_layers, pluralStringResource(R.plurals.layer_count, layers, layers), appText)
 }
 
 /** Something the user still has to do, with the button that does it. */

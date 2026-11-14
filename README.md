@@ -2,8 +2,9 @@
 
 Fanlet puts invisible activation bars on the left and right edges of an Android
 screen. Press a bar and a half-ring pie of app shortcuts fans out under your finger;
-slide to an app and let go to open it. Hold still on a slice to switch it to a second
-app.
+slide to an app and let go to open it. Hold still on a slot to switch it to a second
+app. The pie can have up to five rings of apps, each with its own number of slots,
+and the same pie opens from either edge, for either hand.
 
 **Status:** early development. The features above work; release builds and
 downloads are still to come.

@@ -37,9 +37,10 @@ sealed interface Screen {
     @SerialName("home")
     data object Home : Screen
 
+    /** The app editor, showing the tab of [layer]. */
     @Serializable
     @SerialName("apps")
-    data object Apps : Screen
+    data class Apps(val layer: Int = 0) : Screen
 
     @Serializable
     @SerialName("appearance")
@@ -77,7 +78,10 @@ fun FanletApp(
     val config = home.config
 
     BackHandler(enabled = screen != Screen.Home) {
-        screen = if (screen is Screen.PickApp) Screen.Apps else Screen.Home
+        screen = when (val current = screen) {
+            is Screen.PickApp -> Screen.Apps(current.layer)
+            else -> Screen.Home
+        }
     }
 
     when (val current = screen) {
@@ -90,8 +94,10 @@ fun FanletApp(
             updateConfig = updateConfig,
         )
 
-        Screen.Apps -> AppsScreen(
+        is Screen.Apps -> AppsScreen(
             config = config,
+            selectedLayer = current.layer,
+            onSelectLayer = { layer -> screen = Screen.Apps(layer) },
             updateConfig = updateConfig,
             onPickApp = { target -> screen = Screen.PickApp(target.layer, target.slotIndex, target.secondary) },
             onBack = { screen = Screen.Home },
@@ -123,9 +129,9 @@ fun FanletApp(
             title = stringResource(if (current.secondary) R.string.picker_title_secondary else R.string.picker_title),
             onPicked = { packageName ->
                 updateConfig { cfg -> applyPick(cfg, current, packageName) }
-                screen = Screen.Apps
+                screen = Screen.Apps(current.layer)
             },
-            onBack = { screen = Screen.Apps },
+            onBack = { screen = Screen.Apps(current.layer) },
         )
     }
 }
@@ -188,7 +194,7 @@ private fun HomeWithBackup(
         onRequestNotifications = onRequestNotifications,
         onServiceToggled = onServiceToggled,
         onShowBarsChanged = { show -> updateConfig { it.copy(showBars = show) } },
-        onOpenApps = { onNavigate(Screen.Apps) },
+        onOpenApps = { onNavigate(Screen.Apps()) },
         onOpenAppearance = { onNavigate(Screen.Appearance) },
         onOpenBar = { barId -> onNavigate(Screen.Bar(barId)) },
         onExport = { exportLauncher.launch(ConfigTransfer.SUGGESTED_FILE_NAME) },
