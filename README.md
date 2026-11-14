@@ -18,6 +18,9 @@ that anyone can check what it can and cannot do:
 - **No Accessibility service.** Fanlet cannot read the content of other apps or of
   your screen, and cannot act on other apps on your behalf.
 - **No screen capture and no usage access.**
+- **Only apps with a launcher icon are visible to Fanlet.** It needs their names and
+  icons to show them in the pie and to open them. It does not request
+  `QUERY_ALL_PACKAGES`, which would reveal every installed package.
 - **No analytics, ads or crash reporting.** The only dependencies are the Kotlin
   standard library, kotlinx and AndroidX.
 - **No cloud backup.** Fanlet's data is never included in Google's cloud backup.

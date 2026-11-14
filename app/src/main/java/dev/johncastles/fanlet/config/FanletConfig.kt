@@ -51,16 +51,52 @@ data class BarConfig(
     }
 }
 
+/** How the pie looks. Shared by all bars. */
+@Serializable
+data class PieAppearance(
+    /** Outer radius as a fraction of the screen's shorter side; 1.0 reaches across a portrait screen. */
+    val sizeFraction: Float = DEFAULT_SIZE_FRACTION,
+    /** Size of a slice's main app icon. Icons shrink when a slice is too small for them. */
+    val iconSizeDp: Int = DEFAULT_ICON_SIZE_DP,
+    /** Size of a slice's secondary app icon relative to its main app icon. */
+    val secondaryIconScale: Float = DEFAULT_SECONDARY_ICON_SCALE,
+) {
+    /** A copy with every value inside its allowed range. */
+    fun normalized(): PieAppearance = copy(
+        sizeFraction = sizeFraction.coerceInOrDefault(MIN_SIZE_FRACTION, MAX_SIZE_FRACTION, DEFAULT_SIZE_FRACTION),
+        iconSizeDp = iconSizeDp.coerceIn(MIN_ICON_SIZE_DP, MAX_ICON_SIZE_DP),
+        secondaryIconScale = secondaryIconScale.coerceInOrDefault(
+            MIN_SECONDARY_ICON_SCALE, MAX_SECONDARY_ICON_SCALE, DEFAULT_SECONDARY_ICON_SCALE,
+        ),
+    )
+
+    companion object {
+        const val MIN_SIZE_FRACTION = 0.2f
+        const val MAX_SIZE_FRACTION = 1.0f
+        const val DEFAULT_SIZE_FRACTION = 0.35f
+
+        const val MIN_ICON_SIZE_DP = 24
+        const val MAX_ICON_SIZE_DP = 96
+        const val DEFAULT_ICON_SIZE_DP = 40
+
+        const val MIN_SECONDARY_ICON_SCALE = 0.3f
+        const val MAX_SECONDARY_ICON_SCALE = 1.0f
+        const val DEFAULT_SECONDARY_ICON_SCALE = 0.6f
+    }
+}
+
 /** Everything the user can configure. Stored as JSON; see [ConfigCodec]. */
 @Serializable
 data class FanletConfig(
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
     /** Draw the bars in colour so they can be positioned. When false they are invisible but still touchable. */
     val showBars: Boolean = false,
+    val pie: PieAppearance = PieAppearance(),
     val bars: List<BarConfig> = defaultBars(),
 ) {
     /** A copy with every value inside its allowed range, and default bars if none are left. */
     fun normalized(): FanletConfig = copy(
+        pie = pie.normalized(),
         bars = if (bars.isEmpty()) defaultBars() else bars.map { it.normalized() },
     )
 

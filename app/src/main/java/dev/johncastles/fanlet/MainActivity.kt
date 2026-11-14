@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
                         onServiceToggled = { on -> if (on) startOverlayService() else stopOverlayService() },
                         onShowBarsChanged = { show -> configRepository.update { it.copy(showBars = show) } },
                         onBarChanged = { bar -> configRepository.update { it.withBar(bar) } },
+                        onPieAppearanceChanged = { pie -> configRepository.update { it.copy(pie = pie) } },
                         modifier = Modifier.padding(innerPadding),
                     )
                 }

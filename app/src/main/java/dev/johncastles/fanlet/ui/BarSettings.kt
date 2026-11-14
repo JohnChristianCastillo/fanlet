@@ -112,7 +112,7 @@ private fun SwitchRow(
 }
 
 @Composable
-private fun LabeledSlider(
+internal fun LabeledSlider(
     label: String,
     valueText: String,
     value: Float,

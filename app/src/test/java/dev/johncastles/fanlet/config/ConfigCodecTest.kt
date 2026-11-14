@@ -10,6 +10,7 @@ class ConfigCodecTest {
     fun roundTrip_keepsEverything() {
         val config = FanletConfig(
             showBars = true,
+            pie = PieAppearance(sizeFraction = 0.8f, iconSizeDp = 56, secondaryIconScale = 0.45f),
             bars = listOf(
                 BarConfig(
                     id = "left",
@@ -67,6 +68,30 @@ class ConfigCodecTest {
         assertEquals(BarConfig.MAX_THICKNESS_DP, bar.thicknessDp)
         assertEquals(BarConfig.MIN_LENGTH_FRACTION, bar.lengthFraction)
         assertEquals(1f, bar.centerFraction)
+    }
+
+    @Test
+    fun pieAppearance_isClamped() {
+        val tooSmall = ConfigCodec.decode(
+            """{"schemaVersion": 1, "pie": {"sizeFraction": 0.01, "iconSizeDp": 2, "secondaryIconScale": 0.05}}"""
+        )!!.pie
+        assertEquals(PieAppearance.MIN_SIZE_FRACTION, tooSmall.sizeFraction)
+        assertEquals(PieAppearance.MIN_ICON_SIZE_DP, tooSmall.iconSizeDp)
+        assertEquals(PieAppearance.MIN_SECONDARY_ICON_SCALE, tooSmall.secondaryIconScale)
+
+        val tooLarge = ConfigCodec.decode(
+            """{"schemaVersion": 1, "pie": {"sizeFraction": 5, "iconSizeDp": 900, "secondaryIconScale": 3}}"""
+        )!!.pie
+        assertEquals(PieAppearance.MAX_SIZE_FRACTION, tooLarge.sizeFraction)
+        assertEquals(PieAppearance.MAX_ICON_SIZE_DP, tooLarge.iconSizeDp)
+        assertEquals(PieAppearance.MAX_SECONDARY_ICON_SCALE, tooLarge.secondaryIconScale)
+    }
+
+    @Test
+    fun configWithoutPieAppearance_getsDefaults() {
+        // Files saved before these settings existed.
+        val decoded = ConfigCodec.decode("""{"schemaVersion": 1, "showBars": true}""")!!
+        assertEquals(PieAppearance(), decoded.pie)
     }
 
     @Test

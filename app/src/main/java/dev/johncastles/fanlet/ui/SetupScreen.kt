@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import dev.johncastles.fanlet.R
 import dev.johncastles.fanlet.config.BarConfig
 import dev.johncastles.fanlet.config.FanletConfig
+import dev.johncastles.fanlet.config.PieAppearance
 import dev.johncastles.fanlet.ui.theme.FanletTheme
 
 /** Everything the setup screen shows. Built by the activity, which owns the real state. */
@@ -48,6 +49,7 @@ fun SetupScreen(
     onServiceToggled: (Boolean) -> Unit,
     onShowBarsChanged: (Boolean) -> Unit,
     onBarChanged: (BarConfig) -> Unit,
+    onPieAppearanceChanged: (PieAppearance) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -101,6 +103,12 @@ fun SetupScreen(
         for (bar in state.config.bars) {
             BarSettingsCard(bar = bar, onBarChanged = onBarChanged)
         }
+
+        Text(
+            text = stringResource(R.string.section_pie),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        PieSettingsCard(appearance = state.config.pie, onAppearanceChanged = onPieAppearanceChanged)
     }
 }
 
@@ -184,6 +192,7 @@ private fun SetupScreenMissingPermissionsPreview() {
             onServiceToggled = {},
             onShowBarsChanged = {},
             onBarChanged = {},
+            onPieAppearanceChanged = {},
         )
     }
 }
@@ -208,6 +217,7 @@ private fun SetupScreenRunningPreview() {
             onServiceToggled = {},
             onShowBarsChanged = {},
             onBarChanged = {},
+            onPieAppearanceChanged = {},
         )
     }
 }

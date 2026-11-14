@@ -29,6 +29,14 @@
     <string name="bar_length">Length</string>
     <string name="bar_position">Position (top to bottom)</string>
     <string name="bar_haptics">Vibrate on touch</string>
+    <!-- Pie settings -->
+    <string name="section_pie">Pie</string>
+    <string name="pie_size">Pie size</string>
+    <string name="pie_size_description">How far the pie reaches into the screen. At 100% it reaches the other side of the screen held upright.</string>
+    <string name="icon_size">App icon size</string>
+    <string name="secondary_icon_size">Second app icon size</string>
+    <string name="secondary_icon_size_description">A slice can hold a second app, opened by holding still on the slice. Its icon is shown next to the main app’s icon at this size.</string>
+
     <string name="value_dp">%1$d dp</string>
     <string name="value_percent">%1$d%%</string>
 

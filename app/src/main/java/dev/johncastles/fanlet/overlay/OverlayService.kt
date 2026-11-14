@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ActivityNotFoundException
 import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
@@ -18,13 +19,11 @@ import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.IBinder
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.core.app.NotificationChannelCompat
@@ -33,7 +32,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.johncastles.fanlet.MainActivity
 import dev.johncastles.fanlet.R
+import dev.johncastles.fanlet.apps.AppInfoCache
+import dev.johncastles.fanlet.apps.LaunchableApps
+import dev.johncastles.fanlet.config.BarConfig
 import dev.johncastles.fanlet.config.FanletConfig
+import dev.johncastles.fanlet.config.SliceConfig
 import dev.johncastles.fanlet.configRepository
 import dev.johncastles.fanlet.geometry.BarGeometry
 import dev.johncastles.fanlet.geometry.PixelInsets
@@ -47,9 +50,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Foreground service that owns the overlay windows (the edge bars).
+ * Foreground service that owns the overlay windows: the edge bars, and (through
+ * [PieController]) the pie that a press on a bar opens.
  *
  * Start it with [android.content.Context.startForegroundService]; stop it with
  * [android.content.Context.stopService] or the "Stop" action in its notification.
@@ -59,11 +64,23 @@ import kotlinx.coroutines.launch
 class OverlayService : Service() {
 
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Context used for overlay windows; see [createOverlayContext]. */
     private lateinit var overlayContext: Context
     private lateinit var windowManager: WindowManager
-    private lateinit var vibrator: Vibrator
+    private lateinit var haptics: Haptics
+    private lateinit var appInfo: AppInfoCache
+    private lateinit var pie: PieController
+
+    /** Screen info from the last layout, reused when a pie opens. */
+    private var screenInfo: ScreenInfo? = null
+
+    /** The bar window whose touch gesture is driving the pie, if any. */
+    private var activeBarView: EdgeBarView? = null
+
+    /** TEMPORARY: see [DebugPieDefaults]. Loaded in the background when the service starts. */
+    private var debugSlices: List<SliceConfig> = emptyList()
 
     /** Bar windows on screen, keyed by "<bar id>/<piece index>". */
     private val barViews = mutableMapOf<String, EdgeBarView>()
@@ -79,7 +96,9 @@ class OverlayService : Service() {
         super.onCreate()
         overlayContext = createOverlayContext()
         windowManager = overlayContext.getSystemService(WindowManager::class.java)
-        vibrator = defaultVibrator()
+        haptics = Haptics(this)
+        appInfo = AppInfoCache(packageManager, ioScope)
+        pie = PieController(overlayContext, windowManager, haptics, appInfo, ::launchApp)
         registerWindowConfigCallbacks()
     }
 
@@ -96,12 +115,14 @@ class OverlayService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (started) layoutBars()
+        onScreenConfigurationChanged()
     }
 
     override fun onDestroy() {
         mainScope.cancel()
+        ioScope.cancel()
         windowConfigCallbacks?.let { overlayContext.unregisterComponentCallbacks(it) }
+        pie.dismiss()
         removeAllBars()
         runningState.value = false
         pausedState.value = false
@@ -124,9 +145,24 @@ class OverlayService : Service() {
         mainScope.launch {
             configRepository.config.collect { latest ->
                 config = latest
+                prefetchIcons()
                 layoutBars()
             }
         }
+        mainScope.launch {
+            debugSlices = withContext(Dispatchers.IO) {
+                DebugPieDefaults.slices(LaunchableApps.query(packageManager), packageName)
+            }
+            prefetchIcons()
+        }
+    }
+
+    private fun onScreenConfigurationChanged() {
+        if (!started) return
+        // A rotation in the middle of a gesture would leave the pie in the wrong place.
+        pie.cancel()
+        activeBarView = null
+        layoutBars()
     }
 
     private fun setPaused(value: Boolean) {
@@ -137,6 +173,10 @@ class OverlayService : Service() {
         }
         paused = value
         pausedState.value = value
+        if (value) {
+            pie.dismiss()
+            activeBarView = null
+        }
         layoutBars()
         updateNotification()
     }
@@ -164,7 +204,7 @@ class OverlayService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         val callbacks = object : ComponentCallbacks {
             override fun onConfigurationChanged(newConfig: Configuration) {
-                if (started) layoutBars()
+                onScreenConfigurationChanged()
             }
 
             @Deprecated("Deprecated in Java")
@@ -182,6 +222,10 @@ class OverlayService : Service() {
         while (iterator.hasNext()) {
             val (key, view) = iterator.next()
             if (key !in wanted) {
+                if (view === activeBarView) {
+                    pie.cancel()
+                    activeBarView = null
+                }
                 windowManager.removeView(view)
                 iterator.remove()
             }
@@ -212,14 +256,14 @@ class OverlayService : Service() {
         }
     }
 
-    private class BarWindow(val rect: PixelRect, val hapticsEnabled: Boolean)
+    private class BarWindow(val rect: PixelRect, val bar: BarConfig)
 
     private fun wantedBarWindows(): Map<String, BarWindow> {
-        val screen = readScreenInfo()
+        val screen = readScreenInfo().also { screenInfo = it }
         val windows = mutableMapOf<String, BarWindow>()
         for (bar in config.bars.filter { it.enabled }) {
             BarGeometry.barRects(screen, bar).forEachIndexed { index, rect ->
-                windows["${bar.id}/$index"] = BarWindow(rect, bar.hapticsEnabled)
+                windows["${bar.id}/$index"] = BarWindow(rect, bar)
             }
         }
         return windows
@@ -228,7 +272,71 @@ class OverlayService : Service() {
     private fun bind(view: EdgeBarView, window: BarWindow) {
         // Transparent windows still receive touches; that is what makes the bars invisible.
         view.setBackgroundColor(if (config.showBars) VISIBLE_BAR_COLOR else Color.TRANSPARENT)
-        view.onTouchDown = if (window.hapticsEnabled) ::vibrateTick else null
+        view.onTouch = { event -> onBarTouch(window.bar, view, event) }
+    }
+
+    // ---- Pie gesture --------------------------------------------------------------
+
+    /**
+     * Every touch event of a gesture that started on a bar arrives here, including moves
+     * far outside the bar: Android keeps delivering a gesture to the window it started in.
+     * Raw coordinates are screen coordinates, the same space as the pie.
+     */
+    private fun onBarTouch(bar: BarConfig, view: EdgeBarView, event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (pie.isActive) return // one gesture at a time
+                val screen = screenInfo ?: return
+                activeBarView = view
+                if (bar.hapticsEnabled) haptics.barTouched()
+                pie.start(
+                    bar = bar,
+                    slices = slicesFor(bar),
+                    appearance = config.pie,
+                    screen = screen,
+                    x = event.rawX,
+                    y = event.rawY,
+                    timeMs = event.eventTime,
+                )
+            }
+            MotionEvent.ACTION_MOVE ->
+                if (view === activeBarView) pie.move(event.rawX, event.rawY, event.eventTime)
+            MotionEvent.ACTION_UP ->
+                if (view === activeBarView) {
+                    activeBarView = null
+                    pie.release(event.rawX, event.rawY, event.eventTime)
+                }
+            MotionEvent.ACTION_CANCEL ->
+                if (view === activeBarView) {
+                    activeBarView = null
+                    pie.cancel()
+                }
+        }
+    }
+
+    /** The bar's own slices, or the temporary debug slices while none are configured. */
+    private fun slicesFor(bar: BarConfig): List<SliceConfig> =
+        bar.slices.ifEmpty { debugSlices }.take(MAX_SLICES)
+
+    /** Loads icons for every app the pies can show, so a pie never waits for one. */
+    private fun prefetchIcons() {
+        val packages = (config.bars.flatMap { it.slices } + debugSlices)
+            .flatMap { listOfNotNull(it.primaryPackage, it.secondaryPackage) }
+        appInfo.prefetch(packages)
+    }
+
+    private fun launchApp(packageName: String) {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        if (intent == null) {
+            Log.w(TAG, "No launch intent for $packageName")
+            return
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "Could not launch $packageName", e)
+        }
     }
 
     /**
@@ -301,25 +409,6 @@ class OverlayService : Service() {
     }
 
     private fun Rect.toPixelRect() = PixelRect(left, top, right, bottom)
-
-    // ---- Haptics ----------------------------------------------------------------
-
-    private fun defaultVibrator(): Vibrator =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getSystemService(VibratorManager::class.java).defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Vibrator::class.java)
-        }
-
-    private fun vibrateTick() {
-        val effect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
-        } else {
-            VibrationEffect.createOneShot(TICK_FALLBACK_MS, VibrationEffect.DEFAULT_AMPLITUDE)
-        }
-        vibrator.vibrate(effect)
-    }
 
     // ---- Foreground notification ------------------------------------------------
 
@@ -406,7 +495,7 @@ class OverlayService : Service() {
         /** Bar colour when "Show bars" is on: half-transparent cyan. */
         private const val VISIBLE_BAR_COLOR = 0x8000BCD4.toInt()
 
-        private const val TICK_FALLBACK_MS = 20L
+        private const val MAX_SLICES = 8
 
         private val runningState = MutableStateFlow(false)
         private val pausedState = MutableStateFlow(false)
