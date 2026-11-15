@@ -9,6 +9,22 @@ and the same pie opens from either edge, for either hand.
 **Status:** early development. The features above work; release builds and
 downloads are still to come.
 
+## Screenshots
+
+<p>
+  <img src="docs/screenshots/pie-layer2.png" width="220" alt="The pie with two rings of apps, one highlighted">
+  <img src="docs/screenshots/pie-second-app.png" width="220" alt="Holding still on a slot switches it to its second app">
+  <img src="docs/screenshots/apps.png" width="220" alt="The app editor: one row per entry">
+  <img src="docs/screenshots/appearance.png" width="220" alt="Appearance settings with a live preview of the pie">
+  <img src="docs/screenshots/home.png" width="220" alt="The home screen">
+</p>
+
+1. A pie with two rings: press an edge bar, drag to an app and let go to open it.
+2. Hold still on a slot with a second app and it switches to that app.
+3. Each entry in the editor is one row: the main app, then its second app.
+4. Pie size, icon sizes and the hold time are adjustable, with a live preview.
+5. The home screen.
+
 ## Privacy
 
 Fanlet draws on top of other apps, so it has to be trustworthy. It is designed so
@@ -60,7 +76,8 @@ tools.
 
 ## Installing
 
-Requires Android 8.0 (API level 26) or newer.
+Fanlet is developed and tested on Android 16. The app declares Android 8.0 (API
+level 26) as its minimum, but versions before 16 have not been tested.
 
 1. Download `fanlet-<version>.apk` and its `.sha256` file from the
    [latest release](https://github.com/JohnChristianCastillo/fanlet/releases/latest).
