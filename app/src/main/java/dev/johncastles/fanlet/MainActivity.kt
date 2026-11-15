@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
     // system settings screens and then comes back.
     private var overlayAllowed by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(false)
+    private var batteryOptimized by mutableStateOf(false)
 
     // Remembered across launches so the notification card does not come back after the
     // user declined. Lives in app-private preferences, not in the exported config.
@@ -37,6 +39,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         notificationsDenied = uiPreferences().getBoolean(KEY_NOTIFICATIONS_DECLINED, false)
+        // The setup guide opens by itself once, on a fresh install. Someone who already has
+        // apps in the pie (an update from an earlier version) does not need it.
+        val showSetupFirst = !uiPreferences().getBoolean(KEY_SETUP_DONE, false) &&
+            configRepository.config.value.slotCount == 0
         enableEdgeToEdge()
         setContent {
             FanletTheme {
@@ -61,9 +67,13 @@ class MainActivity : ComponentActivity() {
                         notificationsDenied = notificationsDenied,
                         serviceRunning = serviceRunning,
                         servicePaused = servicePaused,
+                        batteryOptimized = batteryOptimized,
                         config = config,
                     ),
+                    showSetupFirst = showSetupFirst,
+                    onSetupFinished = { uiPreferences().edit { putBoolean(KEY_SETUP_DONE, true) } },
                     onOpenOverlaySettings = ::openOverlaySettings,
+                    onOpenBatterySettings = ::openAppSettings,
                     onRequestNotifications = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -84,6 +94,9 @@ class MainActivity : ComponentActivity() {
         notificationsAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+        // Plain query, no permission needed. Samsung's "Unrestricted" battery setting
+        // counts as ignoring the optimization.
+        batteryOptimized = !getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
     }
 
     private fun uiPreferences() = getSharedPreferences(UI_PREFERENCES, MODE_PRIVATE)
@@ -94,9 +107,16 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /** Fanlet's page in the system app settings, where the battery setting lives. */
+    private fun openAppSettings() {
+        startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:$packageName".toUri())
+        )
+    }
 
     private companion object {
         const val UI_PREFERENCES = "ui"
         const val KEY_NOTIFICATIONS_DECLINED = "notifications_declined"
+        const val KEY_SETUP_DONE = "setup_done"
     }
 }

@@ -37,6 +37,8 @@ data class HomeState(
     val notificationsDenied: Boolean,
     val serviceRunning: Boolean,
     val servicePaused: Boolean,
+    /** Android may put Fanlet to sleep in the background (battery optimization is on). */
+    val batteryOptimized: Boolean,
     val config: FanletConfig,
 )
 
@@ -50,6 +52,7 @@ fun HomeScreen(
     snackbarHostState: SnackbarHostState,
     onOpenOverlaySettings: () -> Unit,
     onRequestNotifications: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onServiceToggled: (Boolean) -> Unit,
     onShowBarsChanged: (Boolean) -> Unit,
     onOpenApps: () -> Unit,
@@ -57,6 +60,8 @@ fun HomeScreen(
     onOpenBar: (barId: String) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
+    onOpenSetup: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     val config = state.config
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
@@ -84,6 +89,14 @@ fun HomeScreen(
                     description = stringResource(R.string.notification_permission_description),
                     actionLabel = stringResource(R.string.action_allow),
                     onAction = onRequestNotifications,
+                )
+            }
+            if (state.batteryOptimized) {
+                ActionCard(
+                    title = stringResource(R.string.battery_title),
+                    description = stringResource(R.string.battery_description),
+                    actionLabel = stringResource(R.string.battery_action),
+                    onAction = onOpenBatterySettings,
                 )
             }
 
@@ -151,6 +164,19 @@ fun HomeScreen(
                     showArrow = false,
                 )
             }
+
+            SettingsGroup(title = stringResource(R.string.app_name)) {
+                NavigationItem(
+                    title = stringResource(R.string.setup_title),
+                    summary = stringResource(R.string.setup_summary),
+                    onClick = onOpenSetup,
+                )
+                NavigationItem(
+                    title = stringResource(R.string.about_title),
+                    summary = stringResource(R.string.about_summary),
+                    onClick = onOpenAbout,
+                )
+            }
         }
     }
 }
@@ -196,11 +222,13 @@ private fun HomeScreenPreview() {
                 notificationsDenied = false,
                 serviceRunning = true,
                 servicePaused = false,
+                batteryOptimized = true,
                 config = FanletConfig.DEFAULT.withSlotAdded(0, "org.example.mail"),
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onOpenOverlaySettings = {},
             onRequestNotifications = {},
+            onOpenBatterySettings = {},
             onServiceToggled = {},
             onShowBarsChanged = {},
             onOpenApps = {},
@@ -208,6 +236,8 @@ private fun HomeScreenPreview() {
             onOpenBar = {},
             onExport = {},
             onImport = {},
+            onOpenSetup = {},
+            onOpenAbout = {},
         )
     }
 }

@@ -52,6 +52,15 @@ sealed interface Screen {
     @SerialName("bar")
     data class Bar(val barId: String) : Screen
 
+    /** The checklist shown on the first launch, and from "Setup guide" on the home screen. */
+    @Serializable
+    @SerialName("setup")
+    data object Setup : Screen
+
+    @Serializable
+    @SerialName("about")
+    data object About : Screen
+
     /** Choosing an app for a slot of [layer]; [slotIndex] null means a new slot. */
     @Serializable
     @SerialName("pick")
@@ -67,22 +76,51 @@ private val screenSaver = Saver<Screen, String>(
 /**
  * The whole settings UI. [home] carries the permission and service state from the
  * activity; every config change goes through [updateConfig].
+ *
+ * @param showSetupFirst open the setup guide instead of the home screen (first launch).
+ * @param onSetupFinished called when the user leaves the setup guide, so it is not shown
+ *   automatically again.
  */
 @Composable
 fun FanletApp(
     home: HomeState,
+    showSetupFirst: Boolean,
+    onSetupFinished: () -> Unit,
     onOpenOverlaySettings: () -> Unit,
     onRequestNotifications: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onServiceToggled: (Boolean) -> Unit,
     updateConfig: ((FanletConfig) -> FanletConfig) -> Unit,
 ) {
-    var screen by rememberSaveable(stateSaver = screenSaver) { mutableStateOf<Screen>(Screen.Home) }
+    var screen by rememberSaveable(stateSaver = screenSaver) {
+        mutableStateOf<Screen>(if (showSetupFirst) Screen.Setup else Screen.Home)
+    }
+    // Set while the user is in the app editor on the way from the setup guide, so back
+    // returns to the guide instead of the home screen.
+    var returnToSetup by rememberSaveable { mutableStateOf(false) }
     val config = home.config
 
+    fun finishSetup() {
+        onSetupFinished()
+        returnToSetup = false
+        screen = Screen.Home
+    }
+
+    fun leaveApps() {
+        if (returnToSetup) {
+            returnToSetup = false
+            screen = Screen.Setup
+        } else {
+            screen = Screen.Home
+        }
+    }
+
     BackHandler(enabled = screen != Screen.Home) {
-        screen = when (val current = screen) {
-            is Screen.PickApp -> Screen.Apps(current.layer)
-            else -> Screen.Home
+        when (val current = screen) {
+            is Screen.PickApp -> screen = Screen.Apps(current.layer)
+            is Screen.Apps -> leaveApps()
+            Screen.Setup -> finishSetup()
+            else -> screen = Screen.Home
         }
     }
 
@@ -91,10 +129,26 @@ fun FanletApp(
             home = home,
             onOpenOverlaySettings = onOpenOverlaySettings,
             onRequestNotifications = onRequestNotifications,
+            onOpenBatterySettings = onOpenBatterySettings,
             onServiceToggled = onServiceToggled,
             onNavigate = { screen = it },
             updateConfig = updateConfig,
         )
+
+        Screen.Setup -> SetupScreen(
+            state = home,
+            onOpenOverlaySettings = onOpenOverlaySettings,
+            onRequestNotifications = onRequestNotifications,
+            onOpenBatterySettings = onOpenBatterySettings,
+            onOpenApps = {
+                returnToSetup = true
+                screen = Screen.Apps()
+            },
+            onServiceToggled = onServiceToggled,
+            onFinish = ::finishSetup,
+        )
+
+        Screen.About -> AboutScreen(onBack = { screen = Screen.Home })
 
         is Screen.Apps -> AppsScreen(
             config = config,
@@ -102,7 +156,7 @@ fun FanletApp(
             onSelectLayer = { layer -> screen = Screen.Apps(layer) },
             updateConfig = updateConfig,
             onPickApp = { target -> screen = Screen.PickApp(target.layer, target.slotIndex, target.secondary) },
-            onBack = { screen = Screen.Home },
+            onBack = ::leaveApps,
         )
 
         Screen.Appearance -> AppearanceScreen(
@@ -159,6 +213,7 @@ private fun HomeWithBackup(
     home: HomeState,
     onOpenOverlaySettings: () -> Unit,
     onRequestNotifications: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onServiceToggled: (Boolean) -> Unit,
     onNavigate: (Screen) -> Unit,
     updateConfig: ((FanletConfig) -> FanletConfig) -> Unit,
@@ -201,11 +256,14 @@ private fun HomeWithBackup(
         snackbarHostState = snackbarHostState,
         onOpenOverlaySettings = onOpenOverlaySettings,
         onRequestNotifications = onRequestNotifications,
+        onOpenBatterySettings = onOpenBatterySettings,
         onServiceToggled = onServiceToggled,
         onShowBarsChanged = { show -> updateConfig { it.copy(showBars = show) } },
         onOpenApps = { onNavigate(Screen.Apps()) },
         onOpenAppearance = { onNavigate(Screen.Appearance) },
         onOpenBar = { barId -> onNavigate(Screen.Bar(barId)) },
+        onOpenSetup = { onNavigate(Screen.Setup) },
+        onOpenAbout = { onNavigate(Screen.About) },
         onExport = { exportLauncher.launch(ConfigTransfer.SUGGESTED_FILE_NAME) },
         // Some file managers label .json files as plain text or generic binary data.
         onImport = { importLauncher.launch(arrayOf(ConfigTransfer.MIME_TYPE, "text/*", "application/octet-stream")) },

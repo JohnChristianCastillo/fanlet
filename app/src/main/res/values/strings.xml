@@ -88,6 +88,34 @@
     <string name="bar_position">Position (top to bottom)</string>
     <string name="bar_haptics">Vibrate on touch</string>
 
+    <!-- Battery -->
+    <string name="battery_title">Keep Fanlet awake</string>
+    <string name="battery_description">Android may put Fanlet to sleep in the background, which switches the edge bars off or delays them after a restart. In Fanlet’s app settings, open Battery and choose “Unrestricted” (on Samsung: Battery > Unrestricted).</string>
+    <string name="battery_action">Open app settings</string>
+
+    <!-- Setup guide -->
+    <string name="setup_title">Setup guide</string>
+    <string name="setup_summary">Walk through what Fanlet needs</string>
+    <string name="setup_heading">Set up Fanlet</string>
+    <string name="setup_intro">A few things make Fanlet work well. Every step is optional, and you can come back to this list any time from the home screen.</string>
+    <string name="setup_apps_description">Choose the apps that appear in the pie.</string>
+    <string name="setup_apps_action">Choose apps</string>
+    <string name="setup_switch_description">Switch the edge bars on.</string>
+    <string name="setup_finish">Done</string>
+    <string name="step_done">Done</string>
+    <string name="step_todo">To do</string>
+
+    <!-- About -->
+    <string name="about_title">About</string>
+    <string name="about_summary">Version, licence and privacy</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_license_title">Licence</string>
+    <string name="about_license_text">Fanlet is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n\nFanlet is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.</string>
+    <string name="about_source_title">Source code</string>
+    <string name="about_source_text">github.com/JohnChristianCastillo/fanlet</string>
+    <string name="about_privacy_title">Privacy</string>
+    <string name="about_privacy_text">Fanlet has no internet access and no Accessibility service. It cannot read your screen or send anything anywhere. It sees only the names and icons of the apps that have a launcher icon, to show them in the pie and open them. Your settings stay on this phone; export and import only touch the file you choose.</string>
+
     <!-- Backup -->
     <string name="section_backup">Backup</string>
     <string name="export_title">Export settings</string>
