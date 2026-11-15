@@ -139,10 +139,12 @@ class OverlayService : Service() {
             stopSelf()
             return
         }
+        // The bars are (about to be) on, so the tap-to-start notification is obsolete,
+        // even if this is a repeated start.
+        OverlayNotifications.cancelRestart(this)
         if (started) return
         started = true
         runningState.value = true
-        OverlayNotifications.cancelRestart(this)
 
         mainScope.launch {
             configRepository.config.collect { latest ->

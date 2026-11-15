@@ -21,6 +21,13 @@ class StartupReceiver : BroadcastReceiver() {
             wanted = BarsWanted.get(context),
             overlayAllowed = Settings.canDrawOverlays(context),
         )
-        if (start) OverlayService.start(context)
+        if (!start) return
+
+        // After a reboot Samsung can delay the normal start by minutes, so offer a one-tap
+        // start straight away. It disappears by itself as soon as the bars are on, whether
+        // the user tapped it or the delayed start arrived first: the service cancels it
+        // when it starts. Posted before the start so the service's cancel always comes after.
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) OverlayNotifications.showRestart(context)
+        OverlayService.start(context)
     }
 }
