@@ -58,9 +58,26 @@ To inspect an APK yourself, open it in Android Studio (**Build > Analyze APK**) 
 `apkanalyzer manifest permissions app-debug.apk` from the Android SDK command-line
 tools.
 
-## Requirements
+## Installing
 
-Android 8.0 (API level 26) or newer.
+Requires Android 8.0 (API level 26) or newer.
+
+1. Download `fanlet-<version>.apk` and its `.sha256` file from the
+   [latest release](https://github.com/JohnChristianCastillo/fanlet/releases/latest).
+2. Check the download (optional but recommended). The result should match the
+   `.sha256` file:
+   - Windows (PowerShell): `Get-FileHash fanlet-<version>.apk -Algorithm SHA256`
+   - Linux and macOS: `sha256sum -c fanlet-<version>.apk.sha256`
+3. Open the APK on your phone and allow your browser or file manager to install apps
+   if Android asks.
+4. Open Fanlet and follow the setup guide.
+
+To get updates automatically, add the repository to
+[Obtainium](https://github.com/ImranR98/Obtainium) with the address
+`https://github.com/JohnChristianCastillo/fanlet`. Every release is signed with the
+same key, so Android installs it as an update and keeps your settings.
+
+## Building
 
 ## Building
 
@@ -80,6 +97,22 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 On Windows, use `gradlew.bat` instead of `./gradlew`.
+
+A plain `./gradlew assembleRelease` produces an unsigned release APK. Signed releases
+are built by the [release workflow](.github/workflows/release.yml) from a tag.
+
+## Releasing
+
+For maintainers. The workflow signs with a key stored in the repository's Actions
+secrets (`FANLET_KEYSTORE_BASE64`, `FANLET_KEYSTORE_PASSWORD`, `FANLET_KEY_ALIAS`,
+`FANLET_KEY_PASSWORD`).
+
+1. Raise `versionCode` and set `versionName` in `app/build.gradle.kts`, and commit.
+2. Tag the commit with the same version and push the tag:
+   `git tag v<versionName> && git push origin v<versionName>`.
+3. The workflow runs lint, the tests and the permission check, builds and signs the
+   APK, verifies the signature, and publishes the release with the APK and its SHA-256
+   checksum. It refuses a tag that does not match `versionName`.
 
 ## License
 

@@ -18,12 +18,33 @@ android {
         applicationId = "dev.johncastles.fanlet"
         minSdk = 26
         targetSdk = 37
+        // Bump both for every release. The release workflow refuses a tag that does not
+        // match versionName (tag v0.1.0 for versionName 0.1.0); versionCode must only go up.
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.1.0"
+    }
+
+    // Release signing. The key comes from environment variables, which only the release
+    // workflow sets; a normal build has none, and then the release APK is left unsigned.
+    // The key itself is never in the repository.
+    signingConfigs {
+        val keystoreFile = providers.environmentVariable("FANLET_KEYSTORE_FILE").orNull
+        if (keystoreFile != null) {
+            create("release") {
+                storeFile = file(keystoreFile)
+                storePassword = providers.environmentVariable("FANLET_KEYSTORE_PASSWORD").orNull
+                    ?: throw GradleException("FANLET_KEYSTORE_PASSWORD is not set")
+                keyAlias = providers.environmentVariable("FANLET_KEY_ALIAS").orNull
+                    ?: throw GradleException("FANLET_KEY_ALIAS is not set")
+                keyPassword = providers.environmentVariable("FANLET_KEY_PASSWORD").orNull
+                    ?: throw GradleException("FANLET_KEY_PASSWORD is not set")
+            }
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")

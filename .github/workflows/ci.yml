@@ -24,5 +24,7 @@ jobs:
       # Caches Gradle dependencies and validates the Gradle wrapper checksum.
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: Lint, unit tests, permission check and debug build
-        run: ./gradlew lint testDebugUnitTest check assembleDebug
+      # assembleRelease also runs the R8 shrinker, so a rule that breaks the minified
+      # app fails here and not on the day of a release. It is unsigned: no key in CI.
+      - name: Lint, unit tests, permission check, debug and release builds
+        run: ./gradlew lint testDebugUnitTest check assembleDebug assembleRelease

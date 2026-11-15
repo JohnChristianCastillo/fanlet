@@ -1,0 +1,70 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds, signs and publishes that version on GitHub.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload its files
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Check the tag matches the app version
+        run: |
+          version=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match versionName $version in app/build.gradle.kts" >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # Same checks as every push, before anything is signed or published.
+      - name: Lint, unit tests and permission check
+        run: ./gradlew lint testDebugUnitTest check
+
+      # The signing secrets are only available to this one step.
+      - name: Build the signed release APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FANLET_KEYSTORE_BASE64 }}
+          FANLET_KEYSTORE_PASSWORD: ${{ secrets.FANLET_KEYSTORE_PASSWORD }}
+          FANLET_KEY_ALIAS: ${{ secrets.FANLET_KEY_ALIAS }}
+          FANLET_KEY_PASSWORD: ${{ secrets.FANLET_KEY_PASSWORD }}
+        run: |
+          keystore="$RUNNER_TEMP/fanlet-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          FANLET_KEYSTORE_FILE="$keystore" ./gradlew assembleRelease
+          rm -f "$keystore"
+
+      - name: Name the files, verify the signature and write the checksum
+        run: |
+          mkdir release
+          cp app/build/outputs/apk/release/app-release.apk "release/fanlet-$VERSION.apk"
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --print-certs "release/fanlet-$VERSION.apk"
+          (cd release && sha256sum "fanlet-$VERSION.apk" > "fanlet-$VERSION.apk.sha256")
+          cat "release/fanlet-$VERSION.apk.sha256"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "release/fanlet-$VERSION.apk" \
+            "release/fanlet-$VERSION.apk.sha256" \
+            --title "Fanlet $VERSION" \
+            --generate-notes
