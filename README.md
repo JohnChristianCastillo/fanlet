@@ -43,6 +43,7 @@ Every permission in the app's final manifest is listed here.
 | `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_SPECIAL_USE` | Keep the edge bars running while you use other apps. Android shows a "Fanlet is active" notification for as long as they run, with a Stop button. "Special use" is the service type Android provides for cases like an always-available overlay that none of the other types (location, media, camera and so on) cover. |
 | `POST_NOTIFICATIONS` | Shows that notification on Android 13 and newer. Optional: Fanlet works without it. |
 | `VIBRATE` | A short vibration when you touch an edge bar. |
+| `RECEIVE_BOOT_COMPLETED` | Turns the edge bars back on after the phone restarts, but only if you had them switched on. |
 | `dev.johncastles.fanlet.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Added automatically by the AndroidX Core library. It is private to Fanlet and only protects Fanlet's own internal broadcast receivers on older Android versions. It grants no access to anything outside the app. |
 
 ### How this is enforced

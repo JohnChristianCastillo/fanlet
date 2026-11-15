@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Haptic feedback when a bar is touched. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Turn the edge bars back on after a reboot, if they were on. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Package visibility: only apps with a launcher icon, so they can be listed and
          opened. Deliberately not QUERY_ALL_PACKAGES. -->
@@ -54,6 +56,17 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps user-enabled edge bars (TYPE_APPLICATION_OVERLAY windows) on screen while other apps are in use. Touching a bar opens a menu of app shortcuts. The service runs only after the user turns it on in the app and can be stopped from its notification. No other foreground service type covers an always-available overlay launcher." />
         </service>
+
+        <!-- Restarts the bars after a reboot or an app update if the user had them on.
+             Both broadcasts come from the system, so the receiver is not exported. -->
+        <receiver
+            android:name=".overlay.StartupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -69,7 +69,9 @@ class MainActivity : ComponentActivity() {
                             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
                     },
-                    onServiceToggled = { on -> if (on) startOverlayService() else stopOverlayService() },
+                    onServiceToggled = { on ->
+                        if (on) OverlayService.switchOn(this) else OverlayService.switchOff(this)
+                    },
                     updateConfig = { transform -> configRepository.update(transform) },
                 )
             }
@@ -92,13 +94,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun startOverlayService() {
-        ContextCompat.startForegroundService(this, Intent(this, OverlayService::class.java))
-    }
-
-    private fun stopOverlayService() {
-        stopService(Intent(this, OverlayService::class.java))
-    }
 
     private companion object {
         const val UI_PREFERENCES = "ui"

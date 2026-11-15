@@ -70,6 +70,8 @@ val permissionAllowlist = listOf(
     "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.VIBRATE",
+    // Restart the edge bars after a reboot (StartupReceiver).
+    "android.permission.RECEIVE_BOOT_COMPLETED",
 )
 
 // Rejected even if someone adds them to the allowlist above.

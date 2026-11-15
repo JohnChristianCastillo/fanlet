@@ -1,8 +1,16 @@
 package dev.johncastles.fanlet.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +28,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -28,7 +35,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -200,74 +206,79 @@ private fun SliceCard(
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    // One compact row per entry: | main icon | second icon + X | ... reorder / remove.
+    // Icons only; the app name is the tap label for screen readers.
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AppEntry(
-                    packageName = slice.primaryPackage,
-                    iconSize = 40.dp,
-                    onClick = onChangePrimary,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                    Icon(painterResource(R.drawable.ic_arrow_up), stringResource(R.string.action_move_up))
-                }
-                IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                    Icon(painterResource(R.drawable.ic_arrow_down), stringResource(R.string.action_move_down))
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SlotIcon(packageName = slice.primaryPackage, size = 48.dp, onClick = onChangePrimary)
+            Spacer(modifier = Modifier.width(8.dp))
+            SlotIcon(packageName = slice.secondaryPackage, size = 40.dp, onClick = onChooseSecondary)
+            if (slice.secondaryPackage != null) {
+                IconButton(onClick = onRemoveSecondary, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close),
+                        contentDescription = stringResource(R.string.action_clear),
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
-
-            val secondary = slice.secondaryPackage
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (secondary != null) {
-                    Text(
-                        text = stringResource(R.string.secondary_label),
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                    AppEntry(
-                        packageName = secondary,
-                        iconSize = 28.dp,
-                        onClick = onChooseSecondary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onRemoveSecondary) { Text(stringResource(R.string.action_remove)) }
-                } else {
-                    TextButton(onClick = onChooseSecondary) { Text(stringResource(R.string.action_add_secondary)) }
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-                TextButton(
-                    onClick = onRemove,
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Text(stringResource(R.string.action_remove_slice))
-                }
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+                Icon(painterResource(R.drawable.ic_arrow_up), stringResource(R.string.action_move_up))
+            }
+            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+                Icon(painterResource(R.drawable.ic_arrow_down), stringResource(R.string.action_move_down))
+            }
+            IconButton(onClick = onRemove) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = stringResource(R.string.action_remove_slice),
+                    tint = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
 }
 
-/** An app's icon and name; marks apps that are no longer installed. Tapping changes the app. */
+/**
+ * One app slot as a tappable icon: the app's icon, a "+" in an empty slot, or the icon
+ * in a red frame when the app is no longer installed. Tapping picks or changes the app.
+ */
 @Composable
-private fun AppEntry(packageName: String, iconSize: Dp, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val lookup = rememberAppLookup(packageName)
-    Row(
-        modifier = modifier
+private fun SlotIcon(packageName: String?, size: Dp, onClick: () -> Unit) {
+    val lookup = if (packageName != null) rememberAppLookup(packageName) else null
+    val description = when {
+        packageName == null -> stringResource(R.string.action_add_secondary)
+        lookup == AppLookup.Missing -> stringResource(R.string.app_not_installed)
+        lookup != null -> appLabel(lookup, packageName)
+        else -> packageName
+    }
+    val frame = when {
+        lookup == AppLookup.Missing -> BorderStroke(2.dp, MaterialTheme.colorScheme.error)
+        packageName == null -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        else -> null
+    }
+    Box(
+        modifier = Modifier
+            .size(size + 8.dp)
+            .clip(CircleShape)
+            .then(if (frame != null) Modifier.border(frame, CircleShape) else Modifier)
             .clickable(onClickLabel = stringResource(R.string.action_change_app), onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
     ) {
-        AppIcon(lookup = lookup, size = iconSize)
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
-            Text(text = appLabel(lookup, packageName), style = MaterialTheme.typography.bodyLarge)
-            if (lookup == AppLookup.Missing) {
-                Text(
-                    text = stringResource(R.string.app_not_installed),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+        if (lookup != null) {
+            AppIcon(lookup = lookup, size = size)
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.ic_add),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(size / 2),
+            )
         }
     }
 }

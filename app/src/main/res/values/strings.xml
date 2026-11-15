@@ -51,9 +51,9 @@
     <string name="action_change_app">Change app</string>
     <string name="action_move_up">Move up</string>
     <string name="action_move_down">Move down</string>
-    <string name="action_remove_slice">Remove slice</string>
+    <string name="action_remove_slice">Remove this entry</string>
     <string name="action_add_secondary">Add second app</string>
-    <string name="secondary_label">Hold:</string>
+    <string name="action_clear">Remove second app</string>
 
     <!-- App picker -->
     <string name="picker_title">Choose app</string>
@@ -115,4 +115,6 @@
     <string name="notification_action_pause">Pause</string>
     <string name="notification_action_resume">Resume</string>
     <string name="notification_action_stop">Stop</string>
+    <string name="notification_restart_title">Edge bars are off</string>
+    <string name="notification_restart_text">Tap to turn them back on.</string>
 </resources>

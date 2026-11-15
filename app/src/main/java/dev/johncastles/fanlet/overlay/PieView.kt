@@ -186,24 +186,28 @@ class PieView(context: Context) : View(context) {
                     continue
                 }
 
+                // The main app always sits on the outer part of the slot and the second
+                // app on the inner part. The app a release would launch is the large one;
+                // a hold swaps the sizes, not the places.
                 val swapped = isHighlighted(layer, index) && showingSecondary
-                val large = if (swapped) secondary else item.primary
-                val small = if (swapped) item.primary else secondary
+                var mainSize = if (swapped) baseSize * secondaryIconScale else baseSize
+                var secondarySize = if (swapped) baseSize else baseSize * secondaryIconScale
 
                 // Both icons and the gap between them must fit across the ring.
-                var largeSize = baseSize
-                var smallSize = baseSize * secondaryIconScale
                 val available = ring.depth * 0.95f - gap
-                if (largeSize + smallSize > available) {
-                    val shrink = available / (largeSize + smallSize)
-                    largeSize *= shrink
-                    smallSize *= shrink
+                if (mainSize + secondarySize > available) {
+                    val shrink = available / (mainSize + secondarySize)
+                    mainSize *= shrink
+                    secondarySize *= shrink
                 }
-                val start = ring.middle - (largeSize + gap + smallSize) / 2
-                drawIcon(canvas, large.icon, PieGeometry.slotPoint(pie, slot, start + largeSize / 2), largeSize, alpha)
+                val start = ring.middle - (secondarySize + gap + mainSize) / 2
                 drawIcon(
-                    canvas, small.icon,
-                    PieGeometry.slotPoint(pie, slot, start + largeSize + gap + smallSize / 2), smallSize, alpha,
+                    canvas, secondary.icon,
+                    PieGeometry.slotPoint(pie, slot, start + secondarySize / 2), secondarySize, alpha,
+                )
+                drawIcon(
+                    canvas, item.primary.icon,
+                    PieGeometry.slotPoint(pie, slot, start + secondarySize + gap + mainSize / 2), mainSize, alpha,
                 )
             }
         }

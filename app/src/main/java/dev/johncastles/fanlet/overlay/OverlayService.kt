@@ -26,7 +26,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowInsets
 import android.view.WindowManager
-import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -95,13 +94,19 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> stopSelf()
+            ACTION_STOP -> {
+                BarsWanted.set(this, false)
+                stopSelf()
+            }
             ACTION_PAUSE -> setPaused(true)
             ACTION_RESUME -> setPaused(false)
+            // No action: started by the app, the startup receiver, the restart
+            // notification, or Android restarting the sticky service (null intent).
             else -> start()
         }
-        // Not sticky: restarting after a crash or reboot is handled in a later version.
-        return START_NOT_STICKY
+        // Sticky: if Android kills the process to free memory, it recreates the service
+        // later and calls onStartCommand with a null intent, which starts the bars again.
+        return START_STICKY
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -122,7 +127,13 @@ class OverlayService : Service() {
     private fun start() {
         // Must happen within a few seconds of startForegroundService(), even if we
         // then stop again because the overlay permission is missing.
-        startInForeground()
+        if (!startInForeground()) {
+            // Android refused (possible when restarted from the background on newer
+            // versions): offer a one-tap restart instead of failing silently.
+            OverlayNotifications.showRestart(this)
+            stopSelf()
+            return
+        }
 
         if (!Settings.canDrawOverlays(this)) {
             stopSelf()
@@ -131,6 +142,7 @@ class OverlayService : Service() {
         if (started) return
         started = true
         runningState.value = true
+        OverlayNotifications.cancelRestart(this)
 
         mainScope.launch {
             configRepository.config.collect { latest ->
@@ -393,13 +405,21 @@ class OverlayService : Service() {
 
     // ---- Foreground notification ------------------------------------------------
 
-    private fun startInForeground() {
-        createNotificationChannel()
+    /** Enters the foreground with the status notification. False if Android does not allow it now. */
+    private fun startInForeground(): Boolean {
+        OverlayNotifications.ensureChannel(this)
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            true
+        } catch (e: IllegalStateException) {
+            // ForegroundServiceStartNotAllowedException (Android 12+) is a subclass.
+            Log.w(TAG, "Not allowed to start in the foreground", e)
+            false
         }
     }
 
@@ -411,15 +431,6 @@ class OverlayService : Service() {
         if (allowed) {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
         }
-    }
-
-    private fun createNotificationChannel() {
-        val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
-            .setName(getString(R.string.notification_channel_name))
-            .setDescription(getString(R.string.notification_channel_description))
-            .setShowBadge(false)
-            .build()
-        NotificationManagerCompat.from(this).createNotificationChannel(channel)
     }
 
     private fun buildNotification(): Notification {
@@ -436,7 +447,7 @@ class OverlayService : Service() {
         }
         val stop = serviceAction(ACTION_STOP, REQUEST_STOP, R.string.notification_action_stop)
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, OverlayNotifications.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(getString(if (paused) R.string.notification_text_paused else R.string.notification_text))
@@ -466,7 +477,6 @@ class OverlayService : Service() {
         private const val ACTION_STOP = "dev.johncastles.fanlet.action.STOP_OVERLAY"
         private const val ACTION_PAUSE = "dev.johncastles.fanlet.action.PAUSE_OVERLAY"
         private const val ACTION_RESUME = "dev.johncastles.fanlet.action.RESUME_OVERLAY"
-        private const val CHANNEL_ID = "overlay_status"
         private const val NOTIFICATION_ID = 1
         private const val REQUEST_OPEN_APP = 0
         private const val REQUEST_STOP = 1
@@ -482,6 +492,31 @@ class OverlayService : Service() {
 
         /** True while the service is running. */
         val isRunning: StateFlow<Boolean> = runningState.asStateFlow()
+
+        /**
+         * Starts the bars. From the background (boot, update) Android may refuse; then the
+         * user gets a notification to start them with one tap.
+         */
+        fun start(context: Context) {
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, OverlayService::class.java))
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Not allowed to start the service", e)
+                OverlayNotifications.showRestart(context)
+            }
+        }
+
+        /** The user switched the bars on in the app: remember it and start them. */
+        fun switchOn(context: Context) {
+            BarsWanted.set(context, true)
+            start(context)
+        }
+
+        /** The user switched the bars off in the app: remember it and stop them. */
+        fun switchOff(context: Context) {
+            BarsWanted.set(context, false)
+            context.stopService(Intent(context, OverlayService::class.java))
+        }
 
         /** True while the bars are paused from the notification. */
         val isPaused: StateFlow<Boolean> = pausedState.asStateFlow()
