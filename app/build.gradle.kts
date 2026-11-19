@@ -20,8 +20,8 @@ android {
         targetSdk = 37
         // Bump both for every release. The release workflow refuses a tag that does not
         // match versionName (tag v0.1.0 for versionName 0.1.0); versionCode must only go up.
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
     }
 
     // Release signing. The key comes from environment variables, which only the release
@@ -44,10 +44,19 @@ android {
 
     buildTypes {
         release {
+            // The signed key from the release workflow, or, only for testing the release
+            // build on a phone before tagging, the debug key:
+            //   .\gradlew.bat installRelease -PdebugSignRelease
             signingConfig = signingConfigs.findByName("release")
+                ?: if (project.hasProperty("debugSignRelease")) signingConfigs.getByName("debug") else null
+
+            // Code shrinking (R8) is off. Version 0.1.0 shipped with it on and crashed at
+            // startup ("IllegalAccessError: Class kotlin.collections.f extended by class
+            // qj is inaccessible"): R8 renamed Kotlin library classes in a way the app
+            // could not load. Fanlet is small, so the larger APK is not worth that risk.
+            // Before turning it back on, run the release build on a phone.
             optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                enable = false
             }
         }
     }

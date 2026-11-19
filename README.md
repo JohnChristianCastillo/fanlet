@@ -125,9 +125,14 @@ secrets (`FANLET_KEYSTORE_BASE64`, `FANLET_KEYSTORE_PASSWORD`, `FANLET_KEY_ALIAS
 `FANLET_KEY_PASSWORD`).
 
 1. Raise `versionCode` and set `versionName` in `app/build.gradle.kts`, and commit.
-2. Tag the commit with the same version and push the tag:
+2. Test the release build on a phone first, because CI can build it but not start
+   it: with the phone connected, run
+   `./gradlew installRelease -PdebugSignRelease` (this signs with the debug key, so
+   uninstall Fanlet from the phone first if another build is installed), open the
+   app and try the pie.
+3. Tag the commit with the same version and push the tag:
    `git tag v<versionName> && git push origin v<versionName>`.
-3. The workflow runs lint, the tests and the permission check, builds and signs the
+4. The workflow runs lint, the tests and the permission check, builds and signs the
    APK, verifies the signature, and publishes the release with the APK and its SHA-256
    checksum. It refuses a tag that does not match `versionName`.
 
